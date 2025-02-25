@@ -4,7 +4,7 @@ gunicorn==21.2.0
 spotipy==2.23.0
 llmproxy==0.1.22
 Pillow==9.5.0              # Updated version for llmproxy compatibility
-python-dotenv==1.0.0
+python-dotenv==1.0.1
 setuptools>=69.0.0
 wheel>=0.42.0
 cython
