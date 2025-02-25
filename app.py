@@ -4,8 +4,6 @@ from llmproxy import generate
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 import logging
-import re
-import ast
 
 # === ⚙️ Spotify Credentials (For testing only — secure before deployment) ===
 SPOTIFY_CLIENT_ID = '14745a598a994b708a8eeea02cd9cd53'
@@ -130,6 +128,3 @@ def health_check():
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
-
-# === 🚀 Procfile for Deployment ===
-# web: gunicorn rocket_chat_spotify:app
