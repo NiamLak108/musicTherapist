@@ -1,8 +1,9 @@
-Flask==3.0.0
-flask-cors==4.0.0
-requests>=2.31.0
-protobuf==3.20.3
-grpcio>=1.47.5
-grpcio-tools==1.47.5
-llmproxy==0.1.22
-spotipy==2.23.0
+requests==2.31.0
+click==8.1.3
+Flask==2.3.3           # ✅ Updated Flask version compatible with llmproxy
+gunicorn==20.1.0
+itsdangerous==2.1.2
+Jinja2==3.1.2
+MarkupSafe==2.1.1
+Werkzeug==2.3.7       # ✅ Updated Werkzeug version compatible with Flask 2.3.3
+llmproxy==0.1.22      # ✅ Added llmproxy based on earlier usage
