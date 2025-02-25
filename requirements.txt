@@ -9,5 +9,6 @@ Werkzeug==2.3.7
 spotipy==2.23.0
 llmproxy==0.1.22
 protobuf==4.23.4
-grpcio-tools==1.53.0  # 🔥 Downgraded for compatibility with pymilvus
-pymilvus==2.2.12      # ✅ Kept this version as it requires grpcio<=1.53.0
+grpcio==1.53.0          # 👈 Force grpcio version compatible with pymilvus & grpcio-tools
+grpcio-tools==1.53.0    # 🔥 Same as before
+pymilvus==2.2.12        # ✅ Same as before
