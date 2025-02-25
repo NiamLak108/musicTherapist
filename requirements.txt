@@ -1,1 +1,14 @@
+# === 📦 requirements.txt for Rocket.Chat Music Therapy Playlist Generator ===
+
+Flask==2.3.2
+flask-cors==3.0.10
+gunicorn==21.2.0
+spotipy==2.23.0
+llmproxy==1.0.0  # Ensure the correct version used in your project
+
+# Logging dependencies (usually included with Python standard library, added for completeness)
+logging
+
+# OAuth and environment handling
+python-dotenv==1.0.0
 
