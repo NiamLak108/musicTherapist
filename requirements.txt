@@ -1,12 +1,8 @@
-Flask==2.3.2
-flask-cors==3.0.10
-gunicorn==21.2.0
-spotipy==2.23.0
+Flask==3.0.0
+flask-cors==4.0.0
+requests>=2.31.0
+protobuf==3.20.3
+grpcio>=1.47.5
+grpcio-tools==1.47.5
 llmproxy==0.1.22
-Pillow==9.5.0
-python-dotenv==1.0.1
-setuptools>=69.0.0
-wheel>=0.42.0
-cython
-numpy
-protobuf==4.23.4   # ✅ Added this line for compatibility with llmproxy
+spotipy==2.23.0
