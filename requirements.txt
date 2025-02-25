@@ -1,27 +1,11 @@
-# === 📦 requirements.txt for Rocket.Chat Music Therapy Playlist Generator ===
-
 Flask==2.3.2
 flask-cors==3.0.10
 gunicorn==21.2.0
 spotipy==2.23.0
 llmproxy==0.1.22
-Pillow==9.4.0  # Updated to 9.4.0 for better Python 3.13 compatibility
+Pillow==9.5.0              # Updated version for llmproxy compatibility
 python-dotenv==1.0.0
-
-# Additional dependencies for building Pillow
-setuptools>=68.0.0  # Updated setuptools for better compatibility
-wheel
-
-# Explicitly add build essentials for Heroku environment
+setuptools>=69.0.0
+wheel>=0.42.0
 cython
 numpy
-
-# Heroku may require these system dependencies for Pillow
-# If using an Aptfile, ensure these are listed:
-# libjpeg-dev
-# zlib1g-dev
-# libfreetype6-dev
-# liblcms2-dev
-# libopenjpeg-dev
-# libtiff-dev
-# tk-dev
