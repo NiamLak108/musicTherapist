@@ -36,6 +36,7 @@ def send_direct_message(username, message):
     }
     payload = {"channel": f"@{username}", "text": message}
     response = requests.post(url, json=payload, headers=headers)
+    print(payload)
     if response.status_code == 200:
         print(f"✅ Message sent to {username}: {message}")
     else:
