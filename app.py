@@ -60,7 +60,7 @@ def agent_playlist_QA(user_context, track_list):
     )
     return response.get('response', "[DEBUG] No 'response' field in output.")
 
-# === 🎙️ Enhanced Progressive Chatbot Interaction with Improved State Validation ===
+# === 🎙️ Progressive Chatbot Interaction with Enhanced State Validation ===
 @app.route('/', methods=['POST'])
 def chatbot_interaction():
     try:
@@ -75,13 +75,13 @@ def chatbot_interaction():
         location_match = re.search(r"(?i)(?:in|from)\\s+(\\w+)", user_message)
         genre_match = re.search(r"(?i)(pop|rock|jazz|classical|hip hop|rnb|country)", user_message)
 
-        if mood_match:
+        if mood_match and "situation" not in session:
             session["situation"] = mood_match.group(0)
-        if age_match:
+        if age_match and "age" not in session:
             session["age"] = age_match.group(0)
-        if location_match:
+        if location_match and "location" not in session:
             session["location"] = location_match.group(1)
-        if genre_match:
+        if genre_match and "genre" not in session:
             session["genre"] = genre_match.group(0)
 
         user_sessions[user_id] = session
@@ -91,13 +91,14 @@ def chatbot_interaction():
         missing_fields = [field for field in required_fields if field not in session]
 
         if missing_fields:
-            next_question = {
+            questions = {
                 "situation": "💬 How are you feeling emotionally right now?",
                 "genre": "🎵 What's your favorite music genre?",
                 "age": "🎂 How old are you?",
                 "location": "🌍 Where are you from?"
             }
-            return create_json_response({"text": next_question[missing_fields[0]]})
+            next_missing_field = missing_fields[0]
+            return create_json_response({"text": questions[next_missing_field]})
 
         # If all details are present, proceed directly to playlist generation
         response = agent_music_therapy(
@@ -183,4 +184,5 @@ def create_playlist(user_id, playlist_name, description, track_uris):
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
+
 
