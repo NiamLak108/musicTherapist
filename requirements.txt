@@ -3,3 +3,6 @@ Flask-Cors
 spotipy
 llmproxy
 gunicorn
+Pillow==9.5.0
+setuptools
+wheel
