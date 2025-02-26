@@ -1,10 +1,10 @@
-Flask
+echo "Flask
 Flask-Cors
 spotipy
 llmproxy==0.1.22
 gunicorn
 Pillow==9.5.0
-protobuf==3.20.3
-grpcio-tools==1.48.2
+protobuf==4.23.4
+grpcio-tools==1.61.0
 setuptools
-wheel
+wheel" > requirements.txt
