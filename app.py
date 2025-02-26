@@ -60,21 +60,7 @@ def agent_playlist_QA(user_context, track_list):
     )
     return response.get('response', "[DEBUG] No 'response' field in output.")
 
-# === 🎵 Spotify Search Function ===
-def search_song(mood, limit=30):
-    sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-        client_id=SPOTIFY_CLIENT_ID,
-        client_secret=SPOTIFY_CLIENT_SECRET
-    ))
-    results = sp.search(q=f"{mood} music", limit=limit, type='track')
-    track_uris, track_names = [], []
-    for track in results.get('tracks', {}).get('items', []):
-        track_info = f"{track['name']} by {track['artists'][0]['name']}"
-        track_uris.append(track['uri'])
-        track_names.append(track_info)
-    return {"track_uris": track_uris, "track_names": track_names}
-
-# === 🎙️ Progressive Chatbot Interaction Endpoint ===
+# === 🎙️ Enhanced Progressive Chatbot Interaction with Improved State Validation ===
 @app.route('/', methods=['POST'])
 def chatbot_interaction():
     try:
@@ -83,44 +69,53 @@ def chatbot_interaction():
         user_message = data.get("text", "").lower()
         session = user_sessions.get(user_id, {})
 
-        if not session.get("situation"):
-            session["situation"] = user_message
-            user_sessions[user_id] = session
-            return create_json_response({"text": "🎵 Thank you. Could you share your favorite music genre?"})
+        # Extract multiple details from a single message using regex
+        mood_match = re.search(r"(?i)(sad|happy|angry|excited|heartbroken|anxious)", user_message)
+        age_match = re.search(r"(?i)(\\d{1,2})", user_message)
+        location_match = re.search(r"(?i)(?:in|from)\\s+(\\w+)", user_message)
+        genre_match = re.search(r"(?i)(pop|rock|jazz|classical|hip hop|rnb|country)", user_message)
 
-        if not session.get("genre"):
-            session["genre"] = user_message
-            user_sessions[user_id] = session
-            return create_json_response({"text": "🎵 Great choice! What's your age?"})
+        if mood_match:
+            session["situation"] = mood_match.group(0)
+        if age_match:
+            session["age"] = age_match.group(0)
+        if location_match:
+            session["location"] = location_match.group(1)
+        if genre_match:
+            session["genre"] = genre_match.group(0)
 
-        if not session.get("age"):
-            session["age"] = user_message
-            user_sessions[user_id] = session
-            return create_json_response({"text": "🌍 And where are you from?"})
+        user_sessions[user_id] = session
 
-        if not session.get("location"):
-            session["location"] = user_message
-            user_sessions[user_id] = session
+        # State validation checks before further questioning
+        required_fields = ["situation", "genre", "age", "location"]
+        missing_fields = [field for field in required_fields if field not in session]
 
-            # All information gathered, proceed to playlist generation
-            response = agent_music_therapy(
-                session["situation"], session["age"], session["location"],
-                session["genre"], "", user_id
-            )
+        if missing_fields:
+            next_question = {
+                "situation": "💬 How are you feeling emotionally right now?",
+                "genre": "🎵 What's your favorite music genre?",
+                "age": "🎂 How old are you?",
+                "location": "🌍 Where are you from?"
+            }
+            return create_json_response({"text": next_question[missing_fields[0]]})
 
-            tool_calls = extract_tools(response)
-            last_output = None
+        # If all details are present, proceed directly to playlist generation
+        response = agent_music_therapy(
+            session["situation"], session["age"], session["location"],
+            session["genre"], "", user_id
+        )
 
-            for call in tool_calls:
-                last_output = execute_tool_call(call, user_id, last_output)
+        tool_calls = extract_tools(response)
+        last_output = None
 
-            if last_output and last_output.get("success"):
-                user_sessions.pop(user_id, None)
-                return create_json_response({"text": f"🎉 Playlist created successfully! Access it here: {last_output.get('url')}"})
-            else:
-                return create_json_response({"text": "⚠️ Something went wrong while creating your playlist. Please try again!"})
+        for call in tool_calls:
+            last_output = execute_tool_call(call, user_id, last_output)
 
-        return create_json_response({"text": "🤖 Let's get started. Could you tell me about your current mood?"})
+        if last_output and last_output.get("success"):
+            user_sessions.pop(user_id, None)
+            return create_json_response({"text": f"🎉 Playlist created successfully! Access it here: {last_output.get('url')}"})
+        else:
+            return create_json_response({"text": "⚠️ Something went wrong while creating your playlist. Please try again!"})
 
     except Exception as e:
         logging.error(f"[ERROR] Chatbot processing failed: {str(e)}")
@@ -188,7 +183,4 @@ def create_playlist(user_id, playlist_name, description, track_uris):
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
-
-
-
 
