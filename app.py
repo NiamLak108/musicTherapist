@@ -24,43 +24,31 @@ def create_json_response(data, status_code=200):
     return response
 
 
-# === 🎧 LLM QA Agent for Playlist Suitability ===
-def agent_playlist_QA(user_context, track_list):
-    system = """
-    You are an AI quality assurance agent for a music therapy playlist.
-    Given the following:
-    - The user's emotional state, age, location, and preferred music genre.
-    - A list of recommended tracks (title and artist).
-    Your task is to:
-    - Analyze whether the playlist is contextually appropriate.
-    - Suggest additional tracks if necessary in the format "Song - Artist".
-    - If perfect, respond ONLY with `$$EXIT$$`.
-    """
-    track_summary = "\n".join([f"- {track}" for track in track_list])
-    query = f"""
-    User context:
-    - Emotional state: {user_context['situation']}
-    - Age: {user_context['age']}
-    - Location: {user_context['location']}
-    - Preferred genre: {user_context['genre']}
+# === 🎙️ Rocket.Chat Main Endpoint with Dynamic Response ===
+@app.route('/', methods=['GET', 'POST'])
+def health_check():
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        logging.info(f"[INFO] POST received at root with data: {data}")
 
-    Playlist tracks:
-    {track_summary}
-    """
+        # Extract message text from Rocket.Chat payload
+        user_message = data.get("text", "").lower()
 
-    response = generate(
-        model='4o-mini',
-        system=system,
-        query=query,
-        temperature=0.3,
-        lastk=10,
-        session_id='MUSIC_THERAPY_QA',
-        rag_usage=False
-    )
-    return response.get('response', "[DEBUG] No 'response' field in output.")
+        # Simple response logic (you can extend this)
+        if user_message == "hi":
+            reply_text = f"👋 Hello {data.get('user_name', 'there')}! How can I help you today?"
+        elif "playlist" in user_message:
+            reply_text = "🎵 I can generate a personalized Spotify playlist for you! Tell me your mood or favorite genre. 🎶"
+        else:
+            reply_text = "🤖 I'm here to help with music therapy playlists. Try saying 'generate playlist'!"
+
+        return create_json_response({"text": reply_text})
+
+    # Default GET response
+    return create_json_response({"text": "🚀 Rocket.Chat Music Therapy Playlist Generator is live and ready!"})
 
 
-# === 🎵 Core Spotify Functions ===
+# === 🎵 Core Spotify Functions (Unchanged) ===
 def search_song(mood, limit=30):
     sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
         client_id=SPOTIFY_CLIENT_ID,
@@ -75,33 +63,7 @@ def search_song(mood, limit=30):
     return {"track_uris": track_uris, "track_names": track_names}
 
 
-def create_playlist(user_id, playlist_name, description, track_uris):
-    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-        client_id=SPOTIFY_CLIENT_ID,
-        client_secret=SPOTIFY_CLIENT_SECRET,
-        redirect_uri=SPOTIFY_REDIRECT_URI,
-        scope='playlist-modify-public'
-    ))
-    playlist = sp.user_playlist_create(user=sp.current_user()['id'], name=playlist_name, public=True, description=description)
-    playlist_url = playlist['external_urls']['spotify']
-    for i in range(0, len(track_uris), 100):
-        sp.playlist_add_items(playlist_id=playlist['id'], items=track_uris[i:i+100])
-    return {"success": True, "url": playlist_url}
-
-
-# === 🎙️ API Endpoints for Rocket.Chat ===
-
-# 🏥 Health Check & POST Handler
-@app.route('/', methods=['GET', 'POST'])
-def health_check():
-    if request.method == 'POST':
-        data = request.get_json() or {}
-        logging.info(f"[INFO] POST received at root with data: {data}")
-        return create_json_response({"message": "POST received at root!", "received_data": data})
-    return create_json_response({"text": "Rocket.Chat Music Therapy Playlist Generator is up and running!"})
-
-
-# 🎵 Generate Playlist Endpoint
+# === 🎧 Playlist Generator Endpoint ===
 @app.route('/generate_playlist', methods=['POST'])
 def generate_playlist():
     try:
@@ -110,23 +72,12 @@ def generate_playlist():
         mood = user_context.get("mood", "happy")
         genre = user_context.get("genre", "pop")
         playlist_name = f"{mood.capitalize()} {genre.capitalize()} Playlist"
-        
-        # Generate initial playlist
-        playlist_data = search_song(f"{mood} {genre}", limit=30)
-        
-        # QA validation
-        qa_feedback = agent_playlist_QA(user_context, playlist_data['track_names'])
-        if "SUGGESTIONS:" in qa_feedback:
-            suggested_tracks = qa_feedback.split("SUGGESTIONS:")[1].strip().split("\n")
-            for suggestion in suggested_tracks:
-                song, artist = suggestion.split(" - ")
-                uri = search_song(f"{song} {artist}", limit=1)['track_uris'][0]
-                if uri:
-                    playlist_data['track_uris'].append(uri)
 
-        # Final playlist creation
-        final_playlist = create_playlist(user_id, playlist_name, "Generated by AI Music Therapist", playlist_data['track_uris'])
-        return create_json_response({"success": True, "url": final_playlist['url']})
+        # Generate playlist
+        playlist_data = search_song(f"{mood} {genre}", limit=30)
+        playlist_url = create_playlist(user_id, playlist_name, "Generated by AI Music Therapist", playlist_data['track_uris'])['url']
+
+        return create_json_response({"success": True, "text": f"🎉 Here's your playlist: {playlist_url}"})
 
     except Exception as e:
         logging.error(f"[ERROR] Playlist generation failed: {str(e)}")
@@ -135,5 +86,6 @@ def generate_playlist():
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
+
 
 
