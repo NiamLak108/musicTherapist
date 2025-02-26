@@ -19,14 +19,12 @@ logging.basicConfig(level=logging.INFO)
 
 user_sessions = {}
 
-
 def create_json_response(data, status_code=200):
     if "response" in data:
         data["text"] = data.pop("response")
     response = make_response(jsonify(data), status_code)
     response.headers["Content-Type"] = "application/json"
     return response
-
 
 # === 🎧 LLM QA Agent for Playlist Suitability ===
 def agent_playlist_QA(user_context, track_list):
@@ -57,11 +55,10 @@ def agent_playlist_QA(user_context, track_list):
         query=query,
         temperature=0.3,
         lastk=10,
-        session_id='MUSIC_THERAPY_QA',
+        session_id=f"MUSIC_THERAPY_QA_{user_context['user_id']}",
         rag_usage=False
     )
     return response.get('response', "[DEBUG] No 'response' field in output.")
-
 
 # === 🎙️ Progressive Chatbot Interaction with Enhanced State Validation ===
 @app.route('/', methods=['POST'])
@@ -101,12 +98,11 @@ def chatbot_interaction():
         }
 
         if missing_fields:
-            next_missing_field = session.get("last_question")
-            if next_missing_field not in missing_fields:
-                next_missing_field = missing_fields[0]
-            session["last_question"] = next_missing_field
-            user_sessions[user_id] = session
-            return create_json_response({"text": questions[next_missing_field]})
+            for field in missing_fields:
+                if session.get("last_question") != field:
+                    session["last_question"] = field
+                    user_sessions[user_id] = session
+                    return create_json_response({"text": questions[field]})
 
         # If all details are present, proceed directly to playlist generation
         response = agent_music_therapy(
@@ -130,7 +126,6 @@ def chatbot_interaction():
         logging.error(f"[ERROR] Chatbot processing failed: {str(e)}")
         return create_json_response({"error": f"An error occurred: {str(e)}"}, 500)
 
-
 # === 🤖 LLM Agent for Music Therapy ===
 def agent_music_therapy(situation, age, location, genre, mood_preferences, user_id):
     system = f"""
@@ -151,17 +146,15 @@ def agent_music_therapy(situation, age, location, genre, mood_preferences, user_
         query=mood_preferences,
         temperature=0.5,
         lastk=10,
-        session_id='MUSIC_THERAPY_AGENT',
+        session_id=f"MUSIC_THERAPY_AGENT_{user_id}",
         rag_usage=False
     )
     return response.get('response', "[DEBUG] No 'response' field in output.")
-
 
 # === 🔧 Extract Tool Calls ===
 def extract_tools(text):
     matches = re.findall(r"(search_song\\s*\\(.*?\\)|create_playlist\\s*\\(.*?\\))", text, re.DOTALL)
     return matches
-
 
 # === ⚡ Execute Tool Calls ===
 def execute_tool_call(tool_call, user_id, previous_output=None):
@@ -179,7 +172,6 @@ def execute_tool_call(tool_call, user_id, previous_output=None):
     except Exception as e:
         logging.error(f"[DEBUG] Error executing tool call: {str(e)}")
 
-
 # === 🎵 Create Playlist Function ===
 def create_playlist(user_id, playlist_name, description, track_uris):
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
@@ -194,8 +186,8 @@ def create_playlist(user_id, playlist_name, description, track_uris):
         sp.playlist_add_items(playlist_id=playlist['id'], items=track_uris[i:i + 100])
     return {"success": True, "url": playlist_url}
 
-
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
+
 
 
