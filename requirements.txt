@@ -5,6 +5,6 @@ llmproxy==0.1.22
 gunicorn
 Pillow==9.5.0
 protobuf==4.23.4
-grpcio-tools==1.61.0
+grpcio-tools==1.61.3
 setuptools
 wheel
