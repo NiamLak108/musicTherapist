@@ -1,8 +1,5 @@
-Flask==2.3.3
-gunicorn==20.1.0
-spotipy==2.23.0
-llmproxy==0.1.22
-requests==2.31.0
-protobuf==4.23.0
-grpcio-tools==1.53.0  # Updated to a version compatible with protobuf>=4
-grpcio==1.53.0
+Flask
+Flask-Cors
+spotipy
+llmproxy
+gunicorn
