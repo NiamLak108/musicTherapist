@@ -9,8 +9,8 @@ MarkupSafe==2.1.1
 Werkzeug==2.3.7
 llmproxy==0.1.22
 protobuf==4.23.4
-grpcio==1.60.0
 grpcio-tools==1.60.0
+
 
 
 
