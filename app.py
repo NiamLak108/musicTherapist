@@ -19,12 +19,14 @@ logging.basicConfig(level=logging.INFO)
 
 user_sessions = {}
 
+
 def create_json_response(data, status_code=200):
     if "response" in data:
         data["text"] = data.pop("response")
     response = make_response(jsonify(data), status_code)
     response.headers["Content-Type"] = "application/json"
     return response
+
 
 # === 🎧 LLM QA Agent for Playlist Suitability ===
 def agent_playlist_QA(user_context, track_list):
@@ -60,6 +62,7 @@ def agent_playlist_QA(user_context, track_list):
     )
     return response.get('response', "[DEBUG] No 'response' field in output.")
 
+
 # === 🎙️ Progressive Chatbot Interaction with Enhanced State Validation ===
 @app.route('/', methods=['POST'])
 def chatbot_interaction():
@@ -67,7 +70,7 @@ def chatbot_interaction():
         data = request.get_json()
         user_id = data.get("user_id", "unknown")
         user_message = data.get("text", "").lower()
-        session = user_sessions.get(user_id, {})
+        session = user_sessions.get(user_id, {"last_question": None})
 
         # Extract multiple details from a single message using regex
         mood_match = re.search(r"(?i)(sad|happy|angry|excited|heartbroken|anxious)", user_message)
@@ -86,18 +89,23 @@ def chatbot_interaction():
 
         user_sessions[user_id] = session
 
-        # State validation checks before further questioning
+        # State validation with memory of the last asked question
         required_fields = ["situation", "genre", "age", "location"]
         missing_fields = [field for field in required_fields if field not in session]
 
+        questions = {
+            "situation": "💬 How are you feeling emotionally right now?",
+            "genre": "🎵 What's your favorite music genre?",
+            "age": "🎂 How old are you?",
+            "location": "🌍 Where are you from?"
+        }
+
         if missing_fields:
-            questions = {
-                "situation": "💬 How are you feeling emotionally right now?",
-                "genre": "🎵 What's your favorite music genre?",
-                "age": "🎂 How old are you?",
-                "location": "🌍 Where are you from?"
-            }
-            next_missing_field = missing_fields[0]
+            next_missing_field = session.get("last_question")
+            if next_missing_field not in missing_fields:
+                next_missing_field = missing_fields[0]
+            session["last_question"] = next_missing_field
+            user_sessions[user_id] = session
             return create_json_response({"text": questions[next_missing_field]})
 
         # If all details are present, proceed directly to playlist generation
@@ -121,6 +129,7 @@ def chatbot_interaction():
     except Exception as e:
         logging.error(f"[ERROR] Chatbot processing failed: {str(e)}")
         return create_json_response({"error": f"An error occurred: {str(e)}"}, 500)
+
 
 # === 🤖 LLM Agent for Music Therapy ===
 def agent_music_therapy(situation, age, location, genre, mood_preferences, user_id):
@@ -147,10 +156,12 @@ def agent_music_therapy(situation, age, location, genre, mood_preferences, user_
     )
     return response.get('response', "[DEBUG] No 'response' field in output.")
 
+
 # === 🔧 Extract Tool Calls ===
 def extract_tools(text):
     matches = re.findall(r"(search_song\\s*\\(.*?\\)|create_playlist\\s*\\(.*?\\))", text, re.DOTALL)
     return matches
+
 
 # === ⚡ Execute Tool Calls ===
 def execute_tool_call(tool_call, user_id, previous_output=None):
@@ -168,6 +179,7 @@ def execute_tool_call(tool_call, user_id, previous_output=None):
     except Exception as e:
         logging.error(f"[DEBUG] Error executing tool call: {str(e)}")
 
+
 # === 🎵 Create Playlist Function ===
 def create_playlist(user_id, playlist_name, description, track_uris):
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
@@ -179,8 +191,9 @@ def create_playlist(user_id, playlist_name, description, track_uris):
     playlist = sp.user_playlist_create(user=sp.current_user()['id'], name=playlist_name, public=True, description=description)
     playlist_url = playlist['external_urls']['spotify']
     for i in range(0, len(track_uris), 100):
-        sp.playlist_add_items(playlist_id=playlist['id'], items=track_uris[i:i+100])
+        sp.playlist_add_items(playlist_id=playlist['id'], items=track_uris[i:i + 100])
     return {"success": True, "url": playlist_url}
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
