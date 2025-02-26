@@ -1,18 +1,5 @@
-requests==2.31.0
-click==8.1.3
 Flask==2.3.3
 gunicorn==20.1.0
-itsdangerous==2.1.2
-Jinja2==3.1.2
-MarkupSafe==2.1.1
-Werkzeug==2.3.7
 spotipy==2.23.0
 llmproxy==0.1.22
-protobuf==4.25.6
-grpcio==1.58.0
-grpcio-tools==1.58.0
-# Removed pymilvus if not needed
-opentelemetry-api==1.19.0
-opentelemetry-sdk==1.19.0
-opentelemetry-exporter-otlp-proto-grpc==1.19.0
-# Removed uptrace if tracing is non-essential
+requests==2.31.0
