@@ -17,6 +17,8 @@ app = Flask(__name__)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
 
+user_sessions = {}
+
 def create_json_response(data, status_code=200):
     if "response" in data:
         data["text"] = data.pop("response")
@@ -72,40 +74,53 @@ def search_song(mood, limit=30):
         track_names.append(track_info)
     return {"track_uris": track_uris, "track_names": track_names}
 
-# === 🎙️ Dynamic Chatbot Interaction Endpoint ===
+# === 🎙️ Progressive Chatbot Interaction Endpoint ===
 @app.route('/', methods=['POST'])
 def chatbot_interaction():
     try:
         data = request.get_json()
-        logging.info(f"[INFO] Received data: {data}")
+        user_id = data.get("user_id", "unknown")
+        user_message = data.get("text", "").lower()
+        session = user_sessions.get(user_id, {})
 
-        user_context = {
-            "user_id": data.get("user_id", "unknown"),
-            "situation": data.get("situation", ""),
-            "age": data.get("age", ""),
-            "location": data.get("location", ""),
-            "genre": data.get("genre", ""),
-            "mood_preferences": data.get("text", "")
-        }
+        if not session.get("situation"):
+            session["situation"] = user_message
+            user_sessions[user_id] = session
+            return create_json_response({"text": "🎵 Thank you. Could you share your favorite music genre?"})
 
-        if not all([user_context['situation'], user_context['age'], user_context['location'], user_context['genre']]):
-            return create_json_response({"text": "🤖 Let's get started. Could you tell me: Your current mood, age, location, and favorite genre?"})
+        if not session.get("genre"):
+            session["genre"] = user_message
+            user_sessions[user_id] = session
+            return create_json_response({"text": "🎵 Great choice! What's your age?"})
 
-        response = agent_music_therapy(
-            user_context["situation"], user_context["age"], user_context["location"],
-            user_context["genre"], user_context["mood_preferences"], user_context["user_id"]
-        )
+        if not session.get("age"):
+            session["age"] = user_message
+            user_sessions[user_id] = session
+            return create_json_response({"text": "🌍 And where are you from?"})
 
-        tool_calls = extract_tools(response)
-        last_output = None
+        if not session.get("location"):
+            session["location"] = user_message
+            user_sessions[user_id] = session
 
-        for call in tool_calls:
-            last_output = execute_tool_call(call, user_context["user_id"], last_output)
+            # All information gathered, proceed to playlist generation
+            response = agent_music_therapy(
+                session["situation"], session["age"], session["location"],
+                session["genre"], "", user_id
+            )
 
-        if last_output and last_output.get("success"):
-            return create_json_response({"text": f"🎉 Playlist created successfully! Access it here: {last_output.get('url')}"})
-        else:
-            return create_json_response({"text": "⚠️ Something went wrong while creating your playlist. Please try again!"})
+            tool_calls = extract_tools(response)
+            last_output = None
+
+            for call in tool_calls:
+                last_output = execute_tool_call(call, user_id, last_output)
+
+            if last_output and last_output.get("success"):
+                user_sessions.pop(user_id, None)
+                return create_json_response({"text": f"🎉 Playlist created successfully! Access it here: {last_output.get('url')}"})
+            else:
+                return create_json_response({"text": "⚠️ Something went wrong while creating your playlist. Please try again!"})
+
+        return create_json_response({"text": "🤖 Let's get started. Could you tell me about your current mood?"})
 
     except Exception as e:
         logging.error(f"[ERROR] Chatbot processing failed: {str(e)}")
@@ -173,6 +188,7 @@ def create_playlist(user_id, playlist_name, description, track_uris):
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
+
 
 
 
