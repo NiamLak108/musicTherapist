@@ -36,7 +36,6 @@ def send_direct_message(username, message):
     }
     payload = {"channel": f"@{username}", "text": message}
     response = requests.post(url, json=payload, headers=headers)
-    print(payload)
     if response.status_code == 200:
         print(f"✅ Message sent to {username}: {message}")
     else:
@@ -57,31 +56,23 @@ def create_spotify_playlist(user_id, playlist_name, description, track_uris):
         sp.playlist_add_items(playlist_id=playlist['id'], items=track_uris[i:i + 100])
     return {"success": True, "url": playlist_url}
 
-# === 🎙️ Flask Endpoint to Initiate Conversation ===
-@app.route('/start', methods=['POST'])
-def start_conversation():
-    data = request.get_json()
-    username = data.get("username", "unknown")
-    if username != "unknown":
-        welcome_message = "💬 Tell me how you're feeling or what you would like to listen to today:"
-        send_direct_message(username, welcome_message)
-        return create_json_response({"text": "✅ Initial message sent successfully!"})
-    else:
-        return create_json_response({"error": "⚠️ Username is missing."}, 400)
-
-# === 🎙️ Progressive Chatbot Interaction Endpoint (Dynamic Input Handling) ===
+# === 🎙️ Unified Flask Endpoint for Conversation and Playlist Generation ===
 @app.route('/', methods=['POST'])
-def chatbot_interaction():
+def unified_chatbot_endpoint():
     try:
         data = request.get_json()
         user_id = data.get("user_id", "unknown")
         username = data.get("username", "unknown")
         user_message = data.get("text", "").strip()
+
+        if username == "unknown":
+            return create_json_response({"error": "⚠️ Username is missing."}, 400)
+
         session = user_sessions.get(user_id, {})
 
-        # Dynamically store any user input
-        if "situation" not in session:
-            session["situation"] = user_message
+        # Determine conversation flow based on existing session data
+        if not session:
+            session["situation"] = user_message if user_message else ""
             send_direct_message(username, "🎂 How old are you?")
         elif "age" not in session:
             session["age"] = user_message
@@ -97,7 +88,7 @@ def chatbot_interaction():
 
         user_sessions[user_id] = session
 
-        # Generate playlist after all inputs
+        # Generate playlist if all required details are available
         if all(field in session for field in ["situation", "age", "location", "genre", "preference"]):
             playlist_name = "Music Therapy Playlist"
             description = (
@@ -124,6 +115,7 @@ def chatbot_interaction():
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
+
 
 
 
