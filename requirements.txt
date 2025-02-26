@@ -1,8 +1,10 @@
 Flask
 Flask-Cors
 spotipy
-llmproxy
+llmproxy==0.1.22
 gunicorn
 Pillow==9.5.0
+protobuf==3.20.3
+grpcio-tools==1.48.2
 setuptools
 wheel
