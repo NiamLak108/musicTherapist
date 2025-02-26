@@ -1,11 +1,13 @@
 import os
+import re
+import ast
 import requests
+import logging
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
+from llmproxy import generate
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth
-import logging
-import ast
+from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 
 # === ⚙️ Environment Variables for Rocket.Chat and Spotify ===
 SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID")
@@ -42,7 +44,55 @@ def send_direct_message(username, message):
         print(f"⚠️ Failed to send message: {response.status_code} - {response.json()}")
     return response
 
-# === 🎵 Create Spotify Playlist ===
+# === 🎧 LLM QA Agent for Playlist Suitability ===
+def agent_playlist_QA(user_context, track_list):
+    system = """
+    You are an AI quality assurance agent for a music therapy playlist.
+
+    Given the following:
+    - The user's emotional state, age, location, and preferred music genre.
+    - A list of recommended tracks (title and artist).
+
+    Your task is to:
+    - Analyze whether the playlist is contextually appropriate.
+    - Suggest additional tracks (in the format: "Song - Artist") if some themes, genres, or tones are missing.
+    - If the playlist is perfectly suitable, respond ONLY with the keyword `$$EXIT$$`.
+    """
+    track_summary = "\n".join([f"- {track}" for track in track_list])
+    query = f"""
+    User context:
+    - Emotional state: {user_context['situation']}
+    - Age: {user_context['age']}
+    - Location: {user_context['location']}
+    - Preferred genre: {user_context['genre']}
+
+    Playlist tracks:
+    {track_summary}
+    """
+    response = generate(
+        model='4o-mini',
+        system=system,
+        query=query,
+        temperature=0.3,
+        lastk=10,
+        session_id='MUSIC_THERAPY_QA',
+        rag_usage=False
+    )
+    return response.get('response', "[DEBUG] No 'response' field in output.")
+
+# === 🎵 Spotify Search & Playlist Functions ===
+def search_song(mood, limit=30):
+    sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+        client_id=SPOTIFY_CLIENT_ID,
+        client_secret=SPOTIFY_CLIENT_SECRET
+    ))
+    results = sp.search(q=f"{mood} music", limit=limit, type='track')
+    track_uris, track_names = [], []
+    for track in results.get('tracks', {}).get('items', []):
+        track_uris.append(track['uri'])
+        track_names.append(f"{track['name']} by {track['artists'][0]['name']}")
+    return {"track_uris": track_uris, "track_names": track_names}
+
 def create_spotify_playlist(user_id, playlist_name, description, track_uris):
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
         client_id=SPOTIFY_CLIENT_ID,
@@ -56,23 +106,59 @@ def create_spotify_playlist(user_id, playlist_name, description, track_uris):
         sp.playlist_add_items(playlist_id=playlist['id'], items=track_uris[i:i + 100])
     return {"success": True, "url": playlist_url}
 
-# === 🎙️ Unified Flask Endpoint for Conversation and Playlist Generation ===
+# === 🤖 LLM Agent for Music Therapy ===
+def agent_music_therapy(situation, age, location, genre, mood_preferences, user_id):
+    system = f"""
+    You are an AI music therapist. Generate Spotify API instructions based on:
+    - Emotional state: {situation}
+    - Age: {age}
+    - Location: {location}
+    - Genre: {genre}
+    - Mood preferences: {mood_preferences}
+    Always:
+    - Retrieve 30 songs aligned with user context.
+    - Call search_song and create_playlist appropriately.
+    - Output code-ready instructions only (no extra text).
+    """
+    response = generate(
+        model='4o-mini',
+        system=system,
+        query=mood_preferences,
+        temperature=0.5,
+        lastk=10,
+        session_id='MUSIC_THERAPY_AGENT',
+        rag_usage=False
+    )
+    return response.get('response', "[DEBUG] No 'response' field in output.")
+
+# === 🔧 Execute Tool Calls ===
+def execute_tool_call(tool_call, user_id, previous_output=None):
+    try:
+        if previous_output and "track_uris" in previous_output:
+            tool_call = tool_call.replace("[track_uris]", str(previous_output["track_uris"]))
+        func_name = tool_call.split("(")[0].strip()
+        args_str = tool_call[len(func_name) + 1:-1]
+        args = ast.literal_eval(f"[{args_str}]")
+        if func_name == "create_playlist":
+            return create_spotify_playlist(user_id, *args)
+        elif func_name == "search_song":
+            return search_song(*args, limit=30)
+    except Exception as e:
+        logging.error(f"[DEBUG] Error executing tool call: {str(e)}")
+
+# === 🎙️ Unified Flask Endpoint ===
 @app.route('/', methods=['POST'])
 def unified_chatbot_endpoint():
     try:
         data = request.get_json()
-        user_id = data.get("user_id", "unknown")
-        username = data.get("username", "unknown")
+        user_id, username = data.get("user_id", "unknown"), data.get("username", "unknown")
         user_message = data.get("text", "").strip()
-
         if username == "unknown":
             return create_json_response({"error": "⚠️ Username is missing."}, 400)
-
         session = user_sessions.get(user_id, {})
-
-        # Determine conversation flow based on existing session data
+        # Dynamic flow based on session data
         if not session:
-            session["situation"] = user_message if user_message else ""
+            session.update({"situation": user_message})
             send_direct_message(username, "🎂 How old are you?")
         elif "age" not in session:
             session["age"] = user_message
@@ -85,37 +171,26 @@ def unified_chatbot_endpoint():
             send_direct_message(username, "🎵 Any specific artist or mood preferences?:")
         elif "preference" not in session:
             session["preference"] = user_message
-
         user_sessions[user_id] = session
-
-        # Generate playlist if all required details are available
-        if all(field in session for field in ["situation", "age", "location", "genre", "preference"]):
-            playlist_name = "Music Therapy Playlist"
-            description = (
-                f"Mood: {session['situation']}, Age: {session['age']}, Location: {session['location']}, "
-                f"Genre: {session['genre']}, Preferences: {session['preference']}"
+        if all(k in session for k in ["situation", "age", "location", "genre", "preference"]):
+            response = agent_music_therapy(
+                session["situation"], session["age"], session["location"],
+                session["genre"], session["preference"], user_id
             )
-            playlist_result = create_spotify_playlist(user_id, playlist_name, description, [])
-
-            if playlist_result["success"]:
-                send_direct_message(
-                    username,
-                    f"🎉 Playlist created successfully! 👉 Access here: {playlist_result['url']}"
-                )
+            tool_calls, last_output = re.findall(r"(search_song\\s*\\(.*?\\)|create_playlist\\s*\\(.*?\\))", response, re.DOTALL), None
+            for call in tool_calls:
+                last_output = execute_tool_call(call, user_id, last_output)
+            if last_output and last_output.get("success"):
+                send_direct_message(username, f"🎉 Playlist created successfully! 👉 {last_output.get('url')}")
                 user_sessions.pop(user_id, None)
                 return create_json_response({"text": "✅ Playlist shared successfully!"})
-            else:
-                return create_json_response({"text": "⚠️ Failed to create playlist."})
-
         return create_json_response({"text": "🤖 Awaiting next user input..."})
-
     except Exception as e:
         logging.error(f"[ERROR] Chatbot processing failed: {str(e)}")
         return create_json_response({"error": f"An error occurred: {str(e)}"}, 500)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
-
 
 
 
