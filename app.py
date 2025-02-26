@@ -28,21 +28,41 @@ def create_json_response(data, status_code=200):
     response.headers["Content-Type"] = "application/json"
     return response
 
-# === 📩 Function to Send Direct Message to Rocket.Chat User ===
-def send_direct_message(username, message):
-    url = "https://chat.genaiconnect.net/api/v1/chat.postMessage"
+# === 📩 Function to Get Direct Message Room ID ===
+def get_direct_message_room(username):
+    url = "https://chat.genaiconnect.net/api/v1/im.create"
     headers = {
         "Content-Type": "application/json",
         "X-Auth-Token": RC_TOKEN,
         "X-User-Id": RC_USER_ID
     }
-    payload = {"channel": f"@{username}", "text": message}
+    payload = {"username": username}
     response = requests.post(url, json=payload, headers=headers)
     if response.status_code == 200:
-        print(f"✅ Message sent to {username}: {message}")
+        return response.json()["room"]["_id"]
     else:
-        print(f"⚠️ Failed to send message: {response.status_code} - {response.json()}")
-    return response
+        print(f"⚠️ Failed to get DM room ID: {response.status_code} - {response.json()}")
+        return None
+
+# === 📩 Function to Send Direct Message to Rocket.Chat User ===
+def send_direct_message(username, message):
+    room_id = get_direct_message_room(username)
+    if room_id:
+        url = "https://chat.genaiconnect.net/api/v1/chat.postMessage"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Auth-Token": RC_TOKEN,
+            "X-User-Id": RC_USER_ID
+        }
+        payload = {"roomId": room_id, "text": message}
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code == 200:
+            print(f"✅ Message sent to {username}: {message}")
+        else:
+            print(f"⚠️ Failed to send message: {response.status_code} - {response.json()}")
+        return response
+    else:
+        print(f"⚠️ Could not retrieve DM room ID for {username}.")
 
 # === 🎧 LLM QA Agent for Playlist Suitability ===
 def agent_playlist_QA(user_context, track_list):
@@ -156,7 +176,6 @@ def unified_chatbot_endpoint():
         if username == "unknown":
             return create_json_response({"error": "⚠️ Username is missing."}, 400)
         session = user_sessions.get(user_id, {})
-        # Dynamic flow based on session data
         if not session:
             session.update({"situation": user_message})
             send_direct_message(username, "🎂 How old are you?")
@@ -191,7 +210,6 @@ def unified_chatbot_endpoint():
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
-
 
 
 
