@@ -10,3 +10,6 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 COPY . /app
 CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8080"]
+
+
+RUN pip install --upgrade pip setuptools wheel
