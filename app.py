@@ -66,30 +66,51 @@ def main():
     # Check if this is the first interaction
     if message in ["hi", "hello", "start", "help"]:
         return jsonify({
-            "text": "Hi! I'm a music therapy bot. I can create playlists based on your mood and preferences. Let's get started! How are you feeling today?",
+            "text": "Hi! I'm a music therapy bot. I can create playlists based on your mood and preferences. Let's get started!\n\n💬 Are you going through a difficult time? (e.g., anxious, heartbroken, stressed)",
             "user_context": user_context
         })
 
-    # **Step 1: Capture Mood**
+    # **Step 1: Capture Mood (Difficult Time)**
     if "mood" not in user_context:
         user_context["mood"] = message
         return jsonify({
-            "text": f"Got it! You’re feeling {message}. What’s your favorite music genre? (e.g., pop, rock, jazz, classical)",
+            "text": "🎂 How old are you?",
             "user_context": user_context
         })
 
-    # **Step 2: Capture Genre**
+    # **Step 2: Capture Age**
+    if "age" not in user_context:
+        user_context["age"] = message
+        return jsonify({
+            "text": "🌍 Where are you from?",
+            "user_context": user_context
+        })
+
+    # **Step 3: Capture Location**
+    if "location" not in user_context:
+        user_context["location"] = message
+        return jsonify({
+            "text": "🎼 What’s your favorite music genre? (e.g., pop, rock, jazz, classical)",
+            "user_context": user_context
+        })
+
+    # **Step 4: Capture Genre**
     if "genre" not in user_context:
         user_context["genre"] = message
-        mood = user_context["mood"]
-        genre = user_context["genre"]
-
         return jsonify({
-            "text": f"Thanks! You're feeling {mood}, and you like {genre} music. I'm creating your playlist now...",
+            "text": "🎵 Any additional music preferences? (e.g., instrumental, slow songs, upbeat, no)",
             "user_context": user_context
         })
 
-    # **Step 3: Generate Playlist**
+    # **Step 5: Capture Additional Preferences**
+    if "preferences" not in user_context:
+        user_context["preferences"] = message
+        return jsonify({
+            "text": "✨ Perfect! I'm creating your playlist now...",
+            "user_context": user_context
+        })
+
+    # **Step 6: Generate Playlist**
     mood = user_context.get("mood")
     genre = user_context.get("genre")
 
@@ -102,7 +123,7 @@ def main():
         
         if playlist_response["success"]:
             return jsonify({
-                "text": f"Your playlist is ready! 🎵 Listen here: {playlist_response['url']}",
+                "text": f"🎉 Playlist created successfully! 👉 {playlist_response['url']}",
                 "user_context": {}  # Clear context after successful playlist creation
             })
 
@@ -110,6 +131,7 @@ def main():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
 
 
 
