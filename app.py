@@ -100,6 +100,10 @@ def main():
     response_text = agent_music_therapy(message, user_context)
     return jsonify({"text": response_text})
 
+@app.route('/', methods=['GET', 'POST'])
+def catch_all():
+    return jsonify({"error": "Invalid route. Use /query"}), 404
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
 
