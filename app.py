@@ -18,13 +18,13 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8888/callback")
 
 # === 💾 Session Storage for Users (Tracks Conversation State) ===
-user_sessions = {}  # Stores user conversations
+user_sessions = {}  # Stores user conversation progress
 
 def get_or_create_session(user_id):
     """Retrieves or initializes a session for a user."""
     if user_id not in user_sessions:
         user_sessions[user_id] = {
-            "step": "ask_mood",  # Conversation flow starts here
+            "step": "waiting_for_trigger",  # Waits for user to say "I need a playlist"
             "mood": None,
             "age": None,
             "genre": None,
@@ -100,6 +100,11 @@ def handle_message():
         return jsonify({"status": "ignored"})
 
     session = get_or_create_session(user_id)  # Retrieve user session
+
+    # === 🚀 Start Conversation if Triggered ===
+    if "playlist" in message and session["step"] == "waiting_for_trigger":
+        session["step"] = "ask_mood"
+        return jsonify({"text": "🎶 What mood are you in? (e.g., happy, sad, energetic) 🎵"})
 
     # === 📜 Conversation Flow ===
     if session["step"] == "ask_mood":
@@ -185,6 +190,7 @@ def extract_tools(text):
 # === 🚀 Run Flask App ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
+
 
 
 
