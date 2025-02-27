@@ -22,20 +22,10 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
     client_secret=SPOTIFY_CLIENT_SECRET
 ))
 
-def extract_tools(text):
-    """Extracts tool calls from LLM-generated text."""
-    print(f"[DEBUG] Extracting tools from text: {repr(text)}")
-    matches = re.findall(r"(search_song\s*\(.*?\)|create_playlist\s*\(.*?\))", text, re.DOTALL)
-    if matches:
-        print(f"[DEBUG] Matched tool calls: {matches}")
-    else:
-        print("[DEBUG] No tool matched. Adjust regex or check LLM output format.")
-    return matches
-
-def search_song(mood, limit=30):
-    """Searches for songs based on mood."""
-    print(f"[DEBUG] Searching songs for mood: {mood} with limit: {limit}")
-    results = sp.search(q=f"{mood} music", limit=limit, type='track')
+def search_song(mood, genre, limit=30):
+    """Searches for songs based on mood and genre."""
+    print(f"[DEBUG] Searching songs for mood: {mood}, genre: {genre}, limit: {limit}")
+    results = sp.search(q=f"{mood} {genre} music", limit=limit, type='track')
     track_uris = [track['uri'] for track in results.get('tracks', {}).get('items', [])]
     track_names = [f"{track['name']} by {track['artists'][0]['name']}" for track in results.get('tracks', {}).get('items', [])]
     
@@ -57,108 +47,70 @@ def create_playlist(user_id, playlist_name, description, track_uris):
     
     return {"success": True, "url": playlist_url}
 
-def execute_tool_call(tool_call, user_id, previous_output=None):
-    """Executes extracted tool calls dynamically."""
-    try:
-        if previous_output and isinstance(previous_output, dict) and "track_uris" in previous_output:
-            uris_str = str(previous_output["track_uris"])
-            tool_call = tool_call.replace("[track_uris]", uris_str)
-            print(f"[DEBUG] Updated tool call after replacing [track_uris]: {tool_call}")
-
-        func_name = tool_call.split("(")[0].strip()
-        args_str = tool_call[len(func_name) + 1:-1]
-        args = ast.literal_eval(f"[{args_str}]")
-
-        print(f"[DEBUG] Parsed function: {func_name} with arguments: {args}")
-
-        if func_name == "create_playlist":
-            if args[0] == user_id:
-                args = args[1:]
-            return create_playlist(user_id, *args)
-        elif func_name == "search_song":
-            return search_song(*args, limit=30)
-        else:
-            print(f"[DEBUG] Unknown function: {func_name}")
-    except Exception as e:
-        print(f"[DEBUG] Error executing tool call: {str(e)}")
-        raise e
-
-def agent_music_therapy(message, user_context):
-    """
-    Engages with the user to gather enough information before generating a playlist.
-    If the user's request lacks details, it asks follow-up questions.
-    """
-    mood = user_context.get("mood")
-    genre = user_context.get("genre")
-    
-    if not mood:
-        return "I’d love to make a playlist for you! First, how are you feeling right now? (e.g., happy, sad, relaxed, energetic)"
-
-    if not genre:
-        return f"Got it! You’re feeling {mood}. What’s your favorite music genre? (e.g., pop, rock, jazz, classical)"
-
-    response = generate(
-        model='4o-mini',
-        system="""
-        You are an AI music therapist.
-        - Given the user's mood and genre preferences, generate a playlist.
-        - Use search_song() to retrieve songs and create_playlist() to generate a playlist.
-        """,
-        query=f"Mood: {mood}, Genre: {genre}",
-        temperature=0.5,
-        lastk=10,
-        session_id='MUSIC_THERAPY_AGENT',
-        rag_usage=False
-    )
-    
-    print(f"[DEBUG] LLM Response: {response}")
-    return response.get('response', 'Error in therapy agent')
-
 @app.route('/', methods=['POST'])
 def main():
     data = request.get_json()
-    print(f"Received request: {data}")
+    print(f"[DEBUG] Received request: {data}")
 
     user = data.get("user_name", "Unknown")
-    message = data.get("text", "")
+    message = data.get("text", "").strip().lower()
 
     if data.get("bot") or not message:
         return jsonify({"status": "ignored"})
 
-    print(f"Message from {user}: {message}")
+    print(f"[DEBUG] Message from {user}: {message}")
 
-    # Retrieve or initialize user context (stores their preferences)
+    # Retrieve or initialize user context
     user_context = data.get("user_context", {})
 
-    # Check if user is starting a conversation
-    if message.lower() in ["hi", "hello", "start", "help"]:
-        return jsonify({"text": "Hi! I'm a music therapy bot. I can create playlists based on your mood and preferences. Let's get started! How are you feeling today?"})
+    # Check if this is the first interaction
+    if message in ["hi", "hello", "start", "help"]:
+        return jsonify({
+            "text": "Hi! I'm a music therapy bot. I can create playlists based on your mood and preferences. Let's get started! How are you feeling today?",
+            "user_context": user_context
+        })
 
-    # Process user message
-    response_text = agent_music_therapy(message, user_context)
+    # **Step 1: Capture Mood**
+    if "mood" not in user_context:
+        user_context["mood"] = message
+        return jsonify({
+            "text": f"Got it! You’re feeling {message}. What’s your favorite music genre? (e.g., pop, rock, jazz, classical)",
+            "user_context": user_context
+        })
 
-    # Check if bot is prompting the user instead of generating a playlist
-    if response_text.startswith("I’d love to make a playlist") or response_text.startswith("Got it!"):
-        return jsonify({"text": response_text, "user_context": user_context})
+    # **Step 2: Capture Genre**
+    if "genre" not in user_context:
+        user_context["genre"] = message
+        mood = user_context["mood"]
+        genre = user_context["genre"]
 
-    # Extract and execute tool calls (playlist creation)
-    tool_calls = extract_tools(response_text)
-    if not tool_calls:
-        return jsonify({"text": "I couldn't generate a playlist. Try rephrasing your request."})
+        return jsonify({
+            "text": f"Thanks! You're feeling {mood}, and you like {genre} music. I'm creating your playlist now...",
+            "user_context": user_context
+        })
 
-    last_output = None
+    # **Step 3: Generate Playlist**
+    mood = user_context.get("mood")
+    genre = user_context.get("genre")
 
-    for call in tool_calls:
-        print(f"[DEBUG] 🚀 Executing tool call: {call}")
-        last_output = execute_tool_call(call, user, last_output)
+    if mood and genre:
+        search_results = search_song(mood, genre)
+        if not search_results["track_uris"]:
+            return jsonify({"text": "I couldn't find any songs matching your mood and genre. Try again with different keywords!"})
 
-    if last_output and isinstance(last_output, dict) and last_output.get("success"):
-        return jsonify({"text": f"Playlist created successfully! Access it here: {last_output.get('url')}"})
+        playlist_response = create_playlist(user, f"{mood.capitalize()} {genre.capitalize()} Playlist", f"A playlist for your {mood} mood.", search_results["track_uris"])
+        
+        if playlist_response["success"]:
+            return jsonify({
+                "text": f"Your playlist is ready! 🎵 Listen here: {playlist_response['url']}",
+                "user_context": {}  # Clear context after successful playlist creation
+            })
 
     return jsonify({"text": "Something went wrong. Please try again."})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
 
 
 
