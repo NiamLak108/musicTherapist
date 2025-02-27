@@ -93,7 +93,7 @@ def agent_music_therapy(message, user_context):
 
 
 
-@app.route('/query', methods=['POST'])
+@app.route('/', methods=['POST'])
 def main():
     data = request.get_json()
     print(f"Received request: {data}")  # Debugging print statement
