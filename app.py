@@ -99,7 +99,7 @@ def agent_music_therapy(message, user_context):
     print(f"[DEBUG] LLM Response: {response}")
     return response.get('response', 'Error in therapy agent')
 
-@app.route('/query', methods=['POST'])
+@app.route('/', methods=['POST'])
 def main():
     data = request.get_json()
     print(f"Received request: {data}")  # Debugging print statement
@@ -129,10 +129,6 @@ def main():
         return jsonify({"text": f"Playlist created successfully! Access it here: {last_output.get('url')}"})
     
     return jsonify({"text": "Something went wrong. Please try again."})
-
-@app.errorhandler(404)
-def page_not_found(e):
-    return "Not Found", 404
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
