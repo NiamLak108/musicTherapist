@@ -22,38 +22,17 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
     client_secret=SPOTIFY_CLIENT_SECRET
 ))
 
-def agent_playlist_QA(user_context, track_list):
-    system = """
-    You are an AI quality assurance agent for a music therapy playlist.
-    Analyze whether the playlist suits the user's emotional needs.
-    Suggest missing tracks if needed, or return `$$EXIT$$` if perfect.
-    """
-
-    track_summary = "\n".join([f"- {track}" for track in track_list])
-    query = f"""
-    User context:
-    - Emotional state: {user_context['situation']}
-    - Age: {user_context['age']}
-    - Location: {user_context['location']}
-    - Preferred genre: {user_context['genre']}
-    
-    Playlist tracks:
-    {track_summary}
-    """
-
-    response = generate(
-        model='4o-mini',
-        system=system,
-        query=query,
-        temperature=0.3,
-        lastk=10,
-        session_id='MUSIC_THERAPY_QA',
-        rag_usage=False
-    )
-
-    return response.get('response', 'Error in QA agent')
+def extract_tools(text):
+    print(f"[DEBUG] Extracting tools from text: {repr(text)}")
+    matches = re.findall(r"(search_song\s*\(.*?\)|create_playlist\s*\(.*?\))", text, re.DOTALL)
+    if matches:
+        print(f"[DEBUG] Matched tool calls: {matches}")
+    else:
+        print("[DEBUG] No tool matched. Adjust regex or check LLM output format.")
+    return matches
 
 def search_song(mood, limit=30):
+    print(f"[DEBUG] Searching songs for mood: {mood} with limit: {limit}")
     results = sp.search(q=f"{mood} music", limit=limit, type='track')
     track_uris = [track['uri'] for track in results.get('tracks', {}).get('items', [])]
     track_names = [f"{track['name']} by {track['artists'][0]['name']}" for track in results.get('tracks', {}).get('items', [])]
@@ -75,11 +54,39 @@ def create_playlist(user_id, playlist_name, description, track_uris):
     
     return {"success": True, "url": playlist_url}
 
+def execute_tool_call(tool_call, user_id, previous_output=None):
+    try:
+        if previous_output and isinstance(previous_output, dict) and "track_uris" in previous_output:
+            uris_str = str(previous_output["track_uris"])
+            tool_call = tool_call.replace("[track_uris]", uris_str)
+            print(f"[DEBUG] Updated tool call after replacing [track_uris]: {tool_call}")
+
+        func_name = tool_call.split("(")[0].strip()
+        args_str = tool_call[len(func_name) + 1:-1]
+        args = ast.literal_eval(f"[{args_str}]")
+
+        print(f"[DEBUG] Parsed function: {func_name} with arguments: {args}")
+
+        if func_name == "create_playlist":
+            if args[0] == user_id:
+                args = args[1:]
+            return create_playlist(user_id, *args)
+        elif func_name == "search_song":
+            return search_song(*args, limit=30)
+        else:
+            print(f"[DEBUG] Unknown function: {func_name}")
+    except Exception as e:
+        print(f"[DEBUG] Error executing tool call: {str(e)}")
+        raise e
+
 def agent_music_therapy(message, user_context):
     response = generate(
         model='4o-mini',
         system="""
         You are an AI music therapist.
+        -ask the users emotional state
+        -what genre they like
+        - any other music preferences 
         Given the user's emotional state, genre, and mood preferences, generate a Spotify playlist.
         Use search_song() to retrieve songs and create_playlist() to generate a playlist.
         """,
@@ -91,9 +98,11 @@ def agent_music_therapy(message, user_context):
     )
     return response.get('response', 'Error in therapy agent')
 
-
-
 @app.route('/', methods=['POST'])
+def hello_world():
+    return jsonify({"text": 'Hello from Koyeb - you reached the main page!'})
+
+@app.route('/query', methods=['POST'])
 def main():
     data = request.get_json()
     print(f"Received request: {data}")  # Debugging print statement
