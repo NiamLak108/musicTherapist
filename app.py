@@ -93,6 +93,7 @@ def agent_music_therapy(message, user_context):
 @app.route('/query', methods=['POST'])
 def main():
     data = request.get_json()
+    print(f"Received request: {data}")  # Debugging print statement
     message = data.get("text", "").strip()
     user_context = data.get("user_context", {})
     
@@ -100,7 +101,7 @@ def main():
     return jsonify({"text": response_text})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001)
+    app.run(host="0.0.0.0", port=8000)
 
 
 
