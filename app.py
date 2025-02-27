@@ -84,9 +84,9 @@ def agent_music_therapy(message, user_context):
         model='4o-mini',
         system="""
         You are an AI music therapist.
-        -ask the users emotional state
-        -what genre they like
-        - any other music preferences 
+        - Ask the user's emotional state
+        - Ask their preferred genre
+        - Ask for any other music preferences
         Given the user's emotional state, genre, and mood preferences, generate a Spotify playlist.
         Use search_song() to retrieve songs and create_playlist() to generate a playlist.
         """,
@@ -96,8 +96,8 @@ def agent_music_therapy(message, user_context):
         session_id='MUSIC_THERAPY_AGENT',
         rag_usage=False
     )
+    print(f"[DEBUG] LLM Response: {response}")
     return response.get('response', 'Error in therapy agent')
-
 
 @app.route('/query', methods=['POST'])
 def main():
@@ -116,6 +116,9 @@ def main():
     response_text = agent_music_therapy(message, user_context)
     
     tool_calls = extract_tools(response_text)
+    if not tool_calls:
+        return jsonify({"text": "I couldn't generate a playlist. Try rephrasing your request."})
+    
     last_output = None
     
     for call in tool_calls:
@@ -133,5 +136,6 @@ def page_not_found(e):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
 
 
