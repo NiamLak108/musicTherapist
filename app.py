@@ -6,10 +6,12 @@ from flask import Flask, request, jsonify
 from llmproxy import generate
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 
-# === 🚀 Rocket.Chat & Spotify API Credentials ===
+# === 🛠 Load API Keys & Environment Variables ===
+load_dotenv()
 ROCKETCHAT_URL = os.getenv("ROCKETCHAT_URL")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
@@ -62,41 +64,34 @@ def create_playlist(user_id, playlist_name, description, track_uris):
         return {"success": False, "message": str(e)}
 
 
-# === 🤖 LLM Agent for Music Therapy ===
-def agent_music_therapy(situation, age, location, genre, mood_preferences, user_id):
-    """Generate structured Spotify API instructions using LLM"""
-    system = f"""
-    You are an AI music therapist. Your task is to generate **structured** Spotify API instructions based on:
-    - Emotional state: {situation}
-    - Age: {age}
-    - Location: {location}
-    - Genre: {genre}
-    - Mood preferences: {mood_preferences}
-
-    🚀 Always return:
-    1️⃣ `search_song('...', 30)`
-    2️⃣ `create_playlist('{user_id}', '...', '...', [track_uris])`
-
-    ❌ DO NOT return any explanations, comments, or extra text.
-
-    🔹 Example Response:
-    ```
-    search_song('sad pop for someone feeling down in London', 30)
-    create_playlist('{user_id}', 'Sad Pop Playlist', 'A playlist for those who enjoy sad pop music', [track_uris])
-    ```
-    """
-
+# === 🎧 LLM Agent for Music Therapy ===
+def agent_music_therapy(message):
+    """Handles music therapy conversation and recommends a Spotify playlist."""
     response = generate(
-        model='4o-mini',
-        system=system,
-        query=mood_preferences,
-        temperature=0.5,
+        model="4o-mini",
+        system="""
+            You are a friendly music therapist 🎶. Your job is to create the perfect playlist for the user.
+            - Start with **"Feeling down? Let’s lift your mood with music! 🎵"**
+            - Ask for **mood**, **music genre**, and **any favorite artists**.
+            - Make it a **fun, casual conversation** with emojis.
+            - Once all details are collected, **search for songs** and **create a Spotify playlist**.
+            - DO NOT list what details you already have.
+
+            🎯 Once all details are collected, generate:
+            ```
+            search_song('...', 30)
+            create_playlist('...', '...', '...', [track_uris])
+            ```
+        """,
+        query=f"User input: '{message}'",
+        temperature=0.7,
         lastk=10,
-        session_id='MUSIC_THERAPY_AGENT',
+        session_id="music-therapy",
         rag_usage=False
     )
 
-    return response.get('response', "[DEBUG] No 'response' field in output.")
+    response_text = response.get("response", "⚠️ Sorry, I couldn't process that. Could you rephrase?").strip()
+    return response_text
 
 
 def extract_tools(text):
@@ -116,37 +111,23 @@ def extract_tools(text):
 @app.route('/', methods=['POST'])
 def home():
     """Default route for verification"""
-    return jsonify({"text": "Hello from Rocket.Chat Spotify Bot!"})
+    return jsonify({"text": "🎵 Hello from Rocket.Chat Spotify Music Therapy Bot!"})
 
 
 @app.route('/query', methods=['POST'])
 def handle_message():
     """Process messages from Rocket.Chat"""
     data = request.get_json()
-
     user = data.get("user_name", "Unknown")
-    message = data.get("text", "")
+    message = data.get("text", "").strip()
 
     print(f"[DEBUG] Incoming Message from {user}: {message}")
 
     if data.get("bot") or not message:
         return jsonify({"status": "ignored"})
 
-    # Extract user context
-    user_context = {
-        "user_id": user,
-        "situation": message,  # Assume message contains emotional state
-        "age": "25",  # Default for now (Can be improved with NLP)
-        "location": "London",  # Default for now
-        "genre": "pop",  # Default for now
-        "mood_preferences": message
-    }
-
-    response = agent_music_therapy(
-        user_context["situation"], user_context["age"], user_context["location"],
-        user_context["genre"], user_context["mood_preferences"], user_context["user_id"]
-    )
-
+    # Call LLM to generate structured API commands
+    response = agent_music_therapy(message)
     tool_calls = extract_tools(response)
     last_output = None
 
@@ -174,7 +155,7 @@ def page_not_found(e):
 
 # === 🚀 Run Flask App ===
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5001)
 
 
 
