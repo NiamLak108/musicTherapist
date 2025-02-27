@@ -71,7 +71,7 @@ def main():
             "user_context": user_context
         })
 
-    # **Step 2: Ask Age (Only if not already stored)**
+    # **Step 2: Ask Age**
     if "age" not in user_context:
         user_context["age"] = message
         return jsonify({
@@ -124,6 +124,7 @@ def main():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
 
 
 
