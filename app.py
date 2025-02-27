@@ -1,6 +1,5 @@
 import os
 import re
-import ast
 import requests
 from flask import Flask, request, jsonify
 from llmproxy import generate
@@ -12,7 +11,6 @@ app = Flask(__name__)
 
 # === 🛠 Load API Keys & Environment Variables ===
 load_dotenv()
-ROCKETCHAT_URL = os.getenv("ROCKETCHAT_URL")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8888/callback")
@@ -35,36 +33,39 @@ def get_or_create_session(user_id):
 # === 🎵 Spotify Functions ===
 def search_song(mood, limit=30):
     """Search for songs based on mood"""
-    sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-        client_id=SPOTIFY_CLIENT_ID,
-        client_secret=SPOTIFY_CLIENT_SECRET
-    ))
+    try:
+        sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+            client_id=SPOTIFY_CLIENT_ID,
+            client_secret=SPOTIFY_CLIENT_SECRET
+        ))
 
-    results = sp.search(q=f"{mood} music", limit=limit, type='track')
-    track_uris = []
-    track_names = []
+        results = sp.search(q=f"{mood} music", limit=limit, type='track')
+        track_uris = []
+        track_names = []
 
-    items = results.get('tracks', {}).get('items', [])
-    if not items:
-        return {"summary": "No tracks found.", "track_uris": [], "track_names": []}
+        items = results.get('tracks', {}).get('items', [])
+        if not items:
+            return {"summary": "No tracks found.", "track_uris": [], "track_names": []}
 
-    for track in items:
-        track_info = f"{track['name']} by {track['artists'][0]['name']}"
-        track_uris.append(track['uri'])
-        track_names.append(track_info)
+        for track in items:
+            track_info = f"{track['name']} by {track['artists'][0]['name']}"
+            track_uris.append(track['uri'])
+            track_names.append(track_info)
 
-    return {"summary": "Here are some recommended songs.", "track_uris": track_uris, "track_names": track_names}
+        return {"summary": "Here are some recommended songs.", "track_uris": track_uris, "track_names": track_names}
+    except Exception as e:
+        return {"error": str(e)}
 
 def create_playlist(user_id, playlist_name, description, track_uris):
     """Create a Spotify playlist and add songs"""
-    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-        client_id=SPOTIFY_CLIENT_ID,
-        client_secret=SPOTIFY_CLIENT_SECRET,
-        redirect_uri=SPOTIFY_REDIRECT_URI,
-        scope='playlist-modify-public'
-    ))
-
     try:
+        sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+            client_id=SPOTIFY_CLIENT_ID,
+            client_secret=SPOTIFY_CLIENT_SECRET,
+            redirect_uri=SPOTIFY_REDIRECT_URI,
+            scope='playlist-modify-public'
+        ))
+
         current_user_id = sp.current_user()['id']
         playlist = sp.user_playlist_create(user=current_user_id, name=playlist_name, public=True, description=description)
         playlist_url = playlist['external_urls']['spotify']
@@ -78,7 +79,7 @@ def create_playlist(user_id, playlist_name, description, track_uris):
         return {"success": False, "message": str(e)}
 
 # === 🚀 Flask Endpoints ===
-@app.route('/', methods=['POST'])
+@app.route('/query', methods=['POST'])
 def handle_message():
     """Process messages from Rocket.Chat"""
     data = request.get_json()
@@ -144,21 +145,25 @@ def handle_message():
             rag_usage=False
         )
 
-        tool_calls = extract_tools(response.get("response", ""))
+        response_text = response.get("response", "")
+        if not response_text:
+            return jsonify({"text": "❌ LLM did not return a valid response."})
+
+        tool_calls = extract_tools(response_text)
         last_output = None
 
         for call in tool_calls:
-            if "create_playlist" in call and last_output and "track_uris" in last_output:
-                call = call.replace("[track_uris]", str(last_output["track_uris"]))
-                print(f"[DEBUG] Updated tool call: {call}")
+            if "search_song" in call:
+                mood_query = f"{session['mood']} {session['genre']}"
+                last_output = search_song(mood_query, limit=30)
 
-            try:
-                last_output = eval(call)  # Execute tool call dynamically
-            except Exception as e:
-                return jsonify({"text": f"❌ Error: {str(e)}"})
+            elif "create_playlist" in call and last_output and "track_uris" in last_output:
+                last_output = create_playlist(user_id, "Custom Playlist", "A personalized playlist.", last_output["track_uris"])
 
         if last_output and last_output.get("success"):
             return jsonify({"text": f"🎵 Playlist created! 👉 {last_output.get('url')}"})
+        elif last_output and "error" in last_output:
+            return jsonify({"text": f"❌ Error: {last_output['error']}"})
         else:
             return jsonify({"text": "⚠️ Playlist creation failed. Try again later."})
 
@@ -178,6 +183,7 @@ def extract_tools(text):
 # === 🚀 Run Flask App ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
+
 
 
 
