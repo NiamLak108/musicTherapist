@@ -99,7 +99,6 @@ def agent_music_therapy(message, user_context):
     return response.get('response', 'Error in therapy agent')
 
 
-
 @app.route('/query', methods=['POST'])
 def main():
     data = request.get_json()
