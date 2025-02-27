@@ -80,7 +80,8 @@ def agent_music_therapy(message, user_context):
         model='4o-mini',
         system="""
         You are an AI music therapist.
-        Given the user's emotional state, genre, and mood preferences, retrieve a playlist.
+        Given the user's emotional state, genre, and mood preferences, generate a Spotify playlist.
+        Use search_song() to retrieve songs and create_playlist() to generate a playlist.
         """,
         query=message,
         temperature=0.5,
@@ -92,7 +93,7 @@ def agent_music_therapy(message, user_context):
 
 
 
-@app.route('/', methods=['POST'])
+@app.route('/query', methods=['POST'])
 def main():
     data = request.get_json()
     print(f"Received request: {data}")  # Debugging print statement
@@ -105,10 +106,20 @@ def main():
     
     print(f"Message from {user}: {message}")
     
-    response_text = agent_music_therapy(message, data.get("user_context", {}))
-    print(response_text)
+    user_context = data.get("user_context", {})
+    response_text = agent_music_therapy(message, user_context)
     
-    return jsonify({"text": response_text})
+    tool_calls = extract_tools(response_text)
+    last_output = None
+    
+    for call in tool_calls:
+        print(f"[DEBUG] 🚀 Executing tool call: {call}")
+        last_output = execute_tool_call(call, user, last_output)
+    
+    if last_output and isinstance(last_output, dict) and last_output.get("success"):
+        return jsonify({"text": f"Playlist created successfully! Access it here: {last_output.get('url')}"})
+    
+    return jsonify({"text": "Something went wrong. Please try again."})
 
 @app.errorhandler(404)
 def page_not_found(e):
@@ -116,8 +127,5 @@ def page_not_found(e):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
-
-
-
 
 
