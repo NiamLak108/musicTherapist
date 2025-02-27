@@ -18,20 +18,19 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8888/callback")
 
 # === 💾 Session Storage for Users (Tracks Conversation State) ===
-user_sessions = {}  # Stores user conversation progress
+user_sessions = {}
 
 def get_or_create_session(user_id):
     """Retrieves or initializes a session for a user."""
     if user_id not in user_sessions:
         user_sessions[user_id] = {
-            "step": "waiting_for_trigger",  # Waits for user to say "I need a playlist"
+            "step": "waiting_for_trigger",
             "mood": None,
             "age": None,
             "genre": None,
             "artist": None
         }
     return user_sessions[user_id]
-
 
 # === 🎵 Spotify Functions ===
 def search_song(mood, limit=30):
@@ -56,7 +55,6 @@ def search_song(mood, limit=30):
 
     return {"summary": "Here are some recommended songs.", "track_uris": track_uris, "track_names": track_names}
 
-
 def create_playlist(user_id, playlist_name, description, track_uris):
     """Create a Spotify playlist and add songs"""
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
@@ -79,11 +77,7 @@ def create_playlist(user_id, playlist_name, description, track_uris):
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-
 # === 🚀 Flask Endpoints ===
-
-
-
 @app.route('/query', methods=['POST'])
 def handle_message():
     """Process messages from Rocket.Chat"""
@@ -96,7 +90,7 @@ def handle_message():
     if data.get("bot") or not message:
         return jsonify({"status": "ignored"})
 
-    session = get_or_create_session(user_id)  # Retrieve user session
+    session = get_or_create_session(user_id)
 
     # === 🚀 Start Conversation if Triggered ===
     if "playlist" in message and session["step"] == "waiting_for_trigger":
@@ -139,8 +133,8 @@ def handle_message():
 
                 🎯 Generate:
                 ```
-                search_song('...', 30)
-                create_playlist('...', '...', '...', [track_uris])
+                search_song('{session['mood']} {session['genre']}', 30)
+                create_playlist('{user_id}', 'Custom Playlist', 'A personalized playlist.', [track_uris])
                 ```
             """,
             query="Generate playlist",
@@ -170,19 +164,16 @@ def handle_message():
 
     return jsonify({"text": "❌ Unexpected error occurred."})
 
-
 @app.errorhandler(404)
 def page_not_found(e):
     """Handle 404 errors"""
     return "Not Found", 404
-
 
 def extract_tools(text):
     """Extract search_song and create_playlist function calls from LLM response"""
     print(f"[DEBUG] Raw LLM Response: {repr(text)}")  
     matches = re.findall(r"(search_song\s*\(.*?\)|create_playlist\s*\(.*?\))", text, re.MULTILINE | re.IGNORECASE)
     return matches if matches else []
-
 
 # === 🚀 Run Flask App ===
 if __name__ == "__main__":
