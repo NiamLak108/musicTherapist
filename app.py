@@ -63,14 +63,7 @@ def main():
     # Retrieve or initialize user context
     user_context = data.get("user_context", {})
 
-    # Check if this is the first interaction
-    if message in ["hi", "hello", "start", "help"]:
-        return jsonify({
-            "text": "Hi! I'm a music therapy bot. I can create playlists based on your mood and preferences. Let's get started!\n\n💬 Are you going through a difficult time? (e.g., anxious, heartbroken, stressed)",
-            "user_context": user_context
-        })
-
-    # **Step 1: Capture Mood (Difficult Time)**
+    # **Step 1: Ask about Mood (Difficult Time)**
     if "mood" not in user_context:
         user_context["mood"] = message
         return jsonify({
@@ -78,7 +71,7 @@ def main():
             "user_context": user_context
         })
 
-    # **Step 2: Capture Age**
+    # **Step 2: Ask Age (Only if not already stored)**
     if "age" not in user_context:
         user_context["age"] = message
         return jsonify({
@@ -86,7 +79,7 @@ def main():
             "user_context": user_context
         })
 
-    # **Step 3: Capture Location**
+    # **Step 3: Ask Location**
     if "location" not in user_context:
         user_context["location"] = message
         return jsonify({
@@ -94,7 +87,7 @@ def main():
             "user_context": user_context
         })
 
-    # **Step 4: Capture Genre**
+    # **Step 4: Ask Music Genre**
     if "genre" not in user_context:
         user_context["genre"] = message
         return jsonify({
@@ -131,6 +124,7 @@ def main():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
 
 
 
