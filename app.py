@@ -54,7 +54,7 @@ def create_playlist(user_id, playlist_name, description, track_uris):
         return None
 
 # === 🚀 Flask Endpoints ===
-@app.route('/query', methods=['POST'])
+@app.route('/', methods=['POST'])
 def handle_message():
     """Handles messages from Rocket.Chat, asks one question, and generates a playlist"""
     data = request.get_json()
