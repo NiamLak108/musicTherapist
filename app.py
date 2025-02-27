@@ -90,19 +90,31 @@ def agent_music_therapy(message, user_context):
     )
     return response.get('response', 'Error in therapy agent')
 
+@app.route('/', methods=['POST'])
+def hello_world():
+    return jsonify({"text": 'Hello from Koyeb - you reached the main page!'})
+
 @app.route('/query', methods=['POST'])
 def main():
     data = request.get_json()
     print(f"Received request: {data}")  # Debugging print statement
-    message = data.get("text", "").strip()
-    user_context = data.get("user_context", {})
     
-    response_text = agent_music_therapy(message, user_context)
+    user = data.get("user_name", "Unknown")
+    message = data.get("text", "")
+    
+    if data.get("bot") or not message:
+        return jsonify({"status": "ignored"})
+    
+    print(f"Message from {user}: {message}")
+    
+    response_text = agent_music_therapy(message, data.get("user_context", {}))
+    print(response_text)
+    
     return jsonify({"text": response_text})
 
-@app.route('/', methods=['GET', 'POST'])
-def catch_all():
-    return jsonify({"error": "Invalid route. Use /query"}), 404
+@app.errorhandler(404)
+def page_not_found(e):
+    return "Not Found", 404
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
