@@ -81,10 +81,7 @@ def create_playlist(user_id, playlist_name, description, track_uris):
 
 
 # === 🚀 Flask Endpoints ===
-@app.route('/', methods=['POST'])
-def home():
-    """Default route for verification"""
-    return jsonify({"text": "🎵 Hello from Rocket.Chat Spotify Music Therapy Bot!"})
+
 
 
 @app.route('/query', methods=['POST'])
