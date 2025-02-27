@@ -3,127 +3,178 @@ import re
 import ast
 import requests
 from flask import Flask, request, jsonify
-from dotenv import load_dotenv
 from llmproxy import generate
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 
 app = Flask(__name__)
 
-# Load environment variables
-load_dotenv()
+# === 🚀 Rocket.Chat & Spotify API Credentials ===
+ROCKETCHAT_URL = os.getenv("ROCKETCHAT_URL")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
-SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI")
+SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8888/callback")
 
-# Initialize Spotify client
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-    client_id=SPOTIFY_CLIENT_ID,
-    client_secret=SPOTIFY_CLIENT_SECRET
-))
+# === 🎵 Spotify Functions ===
+def search_song(mood, limit=30):
+    """Search for songs based on mood"""
+    sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+        client_id=SPOTIFY_CLIENT_ID,
+        client_secret=SPOTIFY_CLIENT_SECRET
+    ))
 
-def search_song(mood, genre, limit=30):
-    """Searches for songs based on mood and genre."""
-    print(f"[DEBUG] Searching songs for mood: {mood}, genre: {genre}, limit: {limit}")
-    results = sp.search(q=f"{mood} {genre} music", limit=limit, type='track')
-    track_uris = [track['uri'] for track in results.get('tracks', {}).get('items', [])]
-    track_names = [f"{track['name']} by {track['artists'][0]['name']}" for track in results.get('tracks', {}).get('items', [])]
-    
-    return {"track_uris": track_uris, "track_names": track_names}
+    results = sp.search(q=f"{mood} music", limit=limit, type='track')
+    track_uris = []
+    track_names = []
+
+    items = results.get('tracks', {}).get('items', [])
+    if not items:
+        return {"summary": "No tracks found.", "track_uris": [], "track_names": []}
+
+    for track in items:
+        track_info = f"{track['name']} by {track['artists'][0]['name']}"
+        track_uris.append(track['uri'])
+        track_names.append(track_info)
+
+    return {"summary": "Here are some recommended songs.", "track_uris": track_uris, "track_names": track_names}
+
 
 def create_playlist(user_id, playlist_name, description, track_uris):
-    """Creates a playlist on Spotify and adds tracks to it."""
-    sp_oauth = spotipy.Spotify(auth_manager=SpotifyOAuth(
+    """Create a Spotify playlist and add songs"""
+    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
         client_id=SPOTIFY_CLIENT_ID,
         client_secret=SPOTIFY_CLIENT_SECRET,
         redirect_uri=SPOTIFY_REDIRECT_URI,
         scope='playlist-modify-public'
     ))
-    
-    current_user_id = sp_oauth.current_user()['id']
-    playlist = sp_oauth.user_playlist_create(user=current_user_id, name=playlist_name, public=True, description=description)
-    playlist_url = playlist['external_urls']['spotify']
-    sp_oauth.playlist_add_items(playlist_id=playlist['id'], items=track_uris)
-    
-    return {"success": True, "url": playlist_url}
 
+    try:
+        current_user_id = sp.current_user()['id']
+        playlist = sp.user_playlist_create(user=current_user_id, name=playlist_name, public=True, description=description)
+        playlist_url = playlist['external_urls']['spotify']
+
+        for i in range(0, len(track_uris), 100):
+            sp.playlist_add_items(playlist_id=playlist['id'], items=track_uris[i:i+100])
+
+        return {"success": True, "url": playlist_url}
+
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+# === 🤖 LLM Agent for Music Therapy ===
+def agent_music_therapy(situation, age, location, genre, mood_preferences, user_id):
+    """Generate structured Spotify API instructions using LLM"""
+    system = f"""
+    You are an AI music therapist. Your task is to generate **structured** Spotify API instructions based on:
+    - Emotional state: {situation}
+    - Age: {age}
+    - Location: {location}
+    - Genre: {genre}
+    - Mood preferences: {mood_preferences}
+
+    🚀 Always return:
+    1️⃣ `search_song('...', 30)`
+    2️⃣ `create_playlist('{user_id}', '...', '...', [track_uris])`
+
+    ❌ DO NOT return any explanations, comments, or extra text.
+
+    🔹 Example Response:
+    ```
+    search_song('sad pop for someone feeling down in London', 30)
+    create_playlist('{user_id}', 'Sad Pop Playlist', 'A playlist for those who enjoy sad pop music', [track_uris])
+    ```
+    """
+
+    response = generate(
+        model='4o-mini',
+        system=system,
+        query=mood_preferences,
+        temperature=0.5,
+        lastk=10,
+        session_id='MUSIC_THERAPY_AGENT',
+        rag_usage=False
+    )
+
+    return response.get('response', "[DEBUG] No 'response' field in output.")
+
+
+def extract_tools(text):
+    """Extract search_song and create_playlist function calls from LLM response"""
+    print(f"[DEBUG] Raw LLM Response: {repr(text)}")  
+    matches = re.findall(r"(search_song\s*\(.*?\)|create_playlist\s*\(.*?\))", text, re.MULTILINE | re.IGNORECASE)
+
+    if matches:
+        print(f"[DEBUG] Matched tool calls: {matches}")
+    else:
+        print("[DEBUG] No tool matched. Adjust regex or check LLM output format.")
+    
+    return matches
+
+
+# === 🚀 Flask Endpoints ===
 @app.route('/', methods=['POST'])
-def main():
+def home():
+    """Default route for verification"""
+    return jsonify({"text": "Hello from Rocket.Chat Spotify Bot!"})
+
+
+@app.route('/query', methods=['POST'])
+def handle_message():
+    """Process messages from Rocket.Chat"""
     data = request.get_json()
-    print(f"[DEBUG] Received request: {data}")
 
     user = data.get("user_name", "Unknown")
-    message = data.get("text", "").strip().lower()
+    message = data.get("text", "")
+
+    print(f"[DEBUG] Incoming Message from {user}: {message}")
 
     if data.get("bot") or not message:
         return jsonify({"status": "ignored"})
 
-    print(f"[DEBUG] Message from {user}: {message}")
+    # Extract user context
+    user_context = {
+        "user_id": user,
+        "situation": message,  # Assume message contains emotional state
+        "age": "25",  # Default for now (Can be improved with NLP)
+        "location": "London",  # Default for now
+        "genre": "pop",  # Default for now
+        "mood_preferences": message
+    }
 
-    # Retrieve or initialize user context
-    user_context = data.get("user_context", {})
+    response = agent_music_therapy(
+        user_context["situation"], user_context["age"], user_context["location"],
+        user_context["genre"], user_context["mood_preferences"], user_context["user_id"]
+    )
 
-    # **Step 1: Ask about Mood (Difficult Time)**
-    if "mood" not in user_context:
-        user_context["mood"] = message
-        return jsonify({
-            "text": "🎂 How old are you?",
-            "user_context": user_context
-        })
+    tool_calls = extract_tools(response)
+    last_output = None
 
-    # **Step 2: Ask Age**
-    if "age" not in user_context:
-        user_context["age"] = message
-        return jsonify({
-            "text": "🌍 Where are you from?",
-            "user_context": user_context
-        })
+    for call in tool_calls:
+        if "create_playlist" in call and last_output and "track_uris" in last_output:
+            call = call.replace("[track_uris]", str(last_output["track_uris"]))
+            print(f"[DEBUG] Updated tool call: {call}")
 
-    # **Step 3: Ask Location**
-    if "location" not in user_context:
-        user_context["location"] = message
-        return jsonify({
-            "text": "🎼 What’s your favorite music genre? (e.g., pop, rock, jazz, classical)",
-            "user_context": user_context
-        })
+        try:
+            last_output = eval(call)  # Execute tool call dynamically
+        except Exception as e:
+            return jsonify({"text": f"❌ Error executing command: {str(e)}"})
 
-    # **Step 4: Ask Music Genre**
-    if "genre" not in user_context:
-        user_context["genre"] = message
-        return jsonify({
-            "text": "🎵 Any additional music preferences? (e.g., instrumental, slow songs, upbeat, no)",
-            "user_context": user_context
-        })
+    if last_output and last_output.get("success"):
+        return jsonify({"text": f"🎵 Playlist created! 👉 {last_output.get('url')}"})
+    else:
+        return jsonify({"text": "⚠️ Playlist creation failed. Try again later."})
 
-    # **Step 5: Capture Additional Preferences**
-    if "preferences" not in user_context:
-        user_context["preferences"] = message
-        return jsonify({
-            "text": "✨ Perfect! I'm creating your playlist now...",
-            "user_context": user_context
-        })
 
-    # **Step 6: Generate Playlist**
-    mood = user_context.get("mood")
-    genre = user_context.get("genre")
+@app.errorhandler(404)
+def page_not_found(e):
+    """Handle 404 errors"""
+    return "Not Found", 404
 
-    if mood and genre:
-        search_results = search_song(mood, genre)
-        if not search_results["track_uris"]:
-            return jsonify({"text": "I couldn't find any songs matching your mood and genre. Try again with different keywords!"})
 
-        playlist_response = create_playlist(user, f"{mood.capitalize()} {genre.capitalize()} Playlist", f"A playlist for your {mood} mood.", search_results["track_uris"])
-        
-        if playlist_response["success"]:
-            return jsonify({
-                "text": f"🎉 Playlist created successfully! 👉 {playlist_response['url']}",
-                "user_context": {}  # Clear context after successful playlist creation
-            })
-
-    return jsonify({"text": "Something went wrong. Please try again."})
-
+# === 🚀 Run Flask App ===
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=5000)
 
 
 
