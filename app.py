@@ -90,11 +90,9 @@ def agent_music_therapy(message, user_context):
     )
     return response.get('response', 'Error in therapy agent')
 
-@app.route('/', methods=['POST'])
-def hello_world():
-    return jsonify({"text": 'Hello from Koyeb - you reached the main page!'})
 
-@app.route('/query', methods=['POST'])
+
+@app.route('/', methods=['POST'])
 def main():
     data = request.get_json()
     print(f"Received request: {data}")  # Debugging print statement
