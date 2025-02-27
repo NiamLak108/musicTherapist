@@ -26,10 +26,7 @@ def search_song(mood, limit=30):
         results = sp.search(q=f"{mood} music", limit=limit, type='track')
         track_uris = [track['uri'] for track in results.get('tracks', {}).get('items', [])]
 
-        if not track_uris:
-            return None
-
-        return track_uris
+        return track_uris if track_uris else None
     except Exception as e:
         print(f"[ERROR] search_song failed: {e}")
         return None
@@ -54,22 +51,26 @@ def create_playlist(user_id, playlist_name, description, track_uris):
         return None
 
 # === 🚀 Flask Endpoints ===
-@app.route('/', methods=['POST'])
+@app.route('/query', methods=['POST'])
 def handle_message():
-    """Handles messages from Rocket.Chat, asks one question, and generates a playlist"""
+    """Handles messages from Rocket.Chat, asks for mood, and generates a playlist"""
     data = request.get_json()
     user_id = data.get("user_name", "Unknown")
-    message = data.get("text", "").strip()
+    message = data.get("text", "").strip().lower()
 
     print(f"[DEBUG] Received from {user_id}: {message}")
 
     if data.get("bot") or not message:
         return jsonify({"status": "ignored"})
 
+    # 🚀 If user is saying "hello" or something general, introduce the bot
+    if "hello" in message or "hi" in message or "what can you do" in message:
+        return jsonify({"text": "🎵 **Welcome! I'm a Music Therapy Bot.**\n\nTell me how you're feeling, and I'll create a **Spotify playlist** just for you! 🧘‍♂️🎶\n\nFor example, say:\n- 'I'm feeling stressed'\n- 'I need focus music'\n- 'Make me a happy playlist' 🎧"})
+
     # 🎵 Call LLM to determine the playlist theme
     response = generate(
         model="4o-mini",
-        system="You are a music assistant. Generate a playlist theme based on the user's message.",
+        system="You are a music assistant. Generate a playlist theme based on the user's mood or request.",
         query=message,
         temperature=0.5,
         lastk=10,
@@ -91,7 +92,7 @@ def handle_message():
     if not playlist_url:
         return jsonify({"text": "⚠️ Failed to create playlist. Please try again later."})
 
-    return jsonify({"text": f"🎵 Here's your playlist: {playlist_url}"})
+    return jsonify({"text": f"🎵 Here's your **{playlist_theme} Playlist**: {playlist_url}"})
 
 # === 🚀 Run Flask App ===
 if __name__ == "__main__":
