@@ -2,34 +2,40 @@ import os
 from flask import Flask, request, jsonify
 from llmproxy import generate
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
+from spotipy.oauth2 import SpotifyOAuth
 
 app = Flask(__name__)
 
-# === 🎵 Hardcoded Spotify Credentials (Not Recommended for Security) ===
+# === 🎵 Hardcoded Spotify Credentials ===
 SPOTIFY_CLIENT_ID = '14745a598a994b708a8eeea02cd9cd53'
 SPOTIFY_CLIENT_SECRET = '616aa8ebca9d40c6a4a1479a623c0558'
 SPOTIFY_REDIRECT_URI = 'http://localhost:8888/callback'
 
+# **Pre-generated tokens (Replace these with actual values)**
+ACCESS_TOKEN = "BQCmVHfXFOr1FpIsD0Rf4PWupKwkf_-fA50OTDnyFI5N0ree-kX1Z3MHJ38_uWrSNsXlEtNAxR6ZJqdOwAkeze0-K2u3mBlVVKKvi3fWRgdkRFuNCe6tsoomnoFEfda5F7yjfLFsQWlAX7vcOv_IK557a9ld0-MNJSAUCZA-rf--2_34F3iXioWtDZUTxE_NWaIfJ7dheTGm4swvK0jtfTmRn4dYBPpnIgn1Di9tY5PA"
+REFRESH_TOKEN = "AQCtcTcd2HdE1SXfXHlzXkiMPme6kiSkywiTka1aDFK-W9MSsCCzc08-IBE2me6zfcFlovwfgDBhLu1g5nkziyTCn1U65PwhhNUDPKj7Bys5JOBGGlhIWX6ZVAWuVaSPGco"
+
 # **Explicitly setting the Spotify user ID to "helloniam"**
 SPOTIFY_USER_ID = "helloniam"
 
-# === 🎵 Spotify Authentication (Using Hardcoded Credentials) ===
-auth_manager = SpotifyOAuth(
-    client_id=SPOTIFY_CLIENT_ID,
-    client_secret=SPOTIFY_CLIENT_SECRET,
-    redirect_uri=SPOTIFY_REDIRECT_URI,
-    scope="playlist-modify-public",
-    open_browser=False
-)
-sp = spotipy.Spotify(auth_manager=auth_manager)
+# === 🎵 Spotify Authentication (Using Pre-Generated Tokens) ===
+sp = spotipy.Spotify(auth=ACCESS_TOKEN)
 
 
-# === 💬 Chatbot Session Data ===
-session = {
-    "state": "conversation",
-    "preferences": {"mood": None, "genre": None}
-}
+def refresh_spotify_token():
+    """Refreshes the Spotify access token if it expires."""
+    try:
+        auth_manager = SpotifyOAuth(
+            client_id=SPOTIFY_CLIENT_ID,
+            client_secret=SPOTIFY_CLIENT_SECRET,
+            redirect_uri=SPOTIFY_REDIRECT_URI,
+            scope="playlist-modify-public"
+        )
+        new_token_info = auth_manager.refresh_access_token(REFRESH_TOKEN)
+        return new_token_info["access_token"]
+    except Exception as e:
+        print(f"[ERROR] Failed to refresh Spotify token: {e}")
+        return None
 
 
 def extract_songs(playlist_text):
@@ -47,8 +53,11 @@ def extract_songs(playlist_text):
 
 
 def search_songs(songs):
-    """Searches Spotify for song URIs using Client Credentials."""
+    """Searches Spotify for song URIs using the stored token."""
     track_uris = []
+    global sp
+    sp = spotipy.Spotify(auth=refresh_spotify_token())
+
     for song, artist in songs:
         try:
             results = sp.search(q=f"track:{song} artist:{artist}", limit=1, type="track")
@@ -62,6 +71,9 @@ def search_songs(songs):
 
 def create_spotify_playlist(playlist_name, track_uris):
     """Creates a Spotify playlist for 'helloniam' and adds songs."""
+    global sp
+    sp = spotipy.Spotify(auth=refresh_spotify_token())
+
     try:
         playlist = sp.user_playlist_create(
             user=SPOTIFY_USER_ID,
@@ -122,7 +134,7 @@ def music_assistant_llm(message):
             - Format the response as:  
               "Mood: [mood]\nGenre: [genre]"
         """,
-        query=f"User input: '{message}'\nCurrent preferences: {session['preferences']}",
+        query=f"User input: '{message}'\nCurrent preferences: {{'mood': None, 'genre': None}}",
         temperature=0.7,
         lastk=10,
         session_id="music-therapy-session",
@@ -145,13 +157,12 @@ def music_assistant_llm(message):
     if not mood or not genre:
         return response_text  
 
-    session["preferences"]["mood"] = mood
-    session["preferences"]["genre"] = genre
-
+    # Generate Playlist
     playlist_text, songs = generate_playlist(mood, genre)
     if not playlist_text:
         return "⚠️ Couldn't generate a playlist. Try again!"
 
+    # Search and create Spotify playlist
     track_uris = search_songs(songs)
     spotify_url = create_spotify_playlist(f"{mood} {genre} Playlist", track_uris)
 
