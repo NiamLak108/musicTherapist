@@ -138,7 +138,10 @@ def music_assistant_llm(message):
     )
 
     response_text = response.get("response", "").strip()
-    print(f"[DEBUG] LLM Response: {response_text}")  # Debugging output
+
+    # **Ensure the message is returned to Rocket.Chat instead of printing it**
+    if not response_text:
+        return "⚠️ Sorry, I couldn't process that. Try again!"
 
     # Extract mood and genre with better error handling
     mood, genre = None, None
@@ -150,7 +153,7 @@ def music_assistant_llm(message):
             return "⚠️ I couldn't determine both mood and genre. Try again!"
 
     if not mood or not genre:
-        return "⚠️ I need both your mood and music genre to create a playlist!"
+        return response_text  # **Return LLM's response to Rocket.Chat, not just print it**
 
     session["preferences"]["mood"] = mood
     session["preferences"]["genre"] = genre
@@ -172,14 +175,15 @@ def music_assistant_llm(message):
 
 @app.route('/', methods=['POST'])
 def main():
-    """Handles user messages and decides what to do."""
+    """Handles user messages and sends them properly to Rocket.Chat."""
     data = request.get_json()
     message = data.get("text", "").strip()
 
-    return jsonify({"text": music_assistant_llm(message)})
+    return jsonify({"text": music_assistant_llm(message)})  # **Ensures response is sent to the frontend**
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
+
 
 
 
