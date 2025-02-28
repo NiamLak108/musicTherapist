@@ -53,7 +53,7 @@ def music_assistant_llm(message):
     return response_text
 
 
-@app.route('/query', methods=['POST'])
+@app.route('/', methods=['POST'])
 def main():
     """Handles user messages and decides what to do."""
     data = request.get_json()
@@ -63,6 +63,7 @@ def main():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
+
 
 
 
