@@ -5,94 +5,65 @@ from llmproxy import generate
 
 app = Flask(__name__)
 
-# Load environment variables
+# Load API Key from .env file
 load_dotenv()
 
-# Store user session data
-user_sessions = {}
+# Single user session
+session = {
+    "state": "conversation",
+    "preferences": {"mood": None, "genre": None}
+}
 
-def generate_playlist(mood, genre):
-    """Uses LLM to generate a playlist based on mood and genre, avoiding content filtering triggers."""
+def music_assistant_llm(message):
+    """Handles the full conversation and generates a playlist."""
+    
     response = generate(
         model="4o-mini",
         system="""
-            You are a **music therapy assistant**. Your role is to generate **a 10-15 song playlist** 
-            based strictly on the **user's mood and preferred genre**.
+            You are a **music therapy assistant** named MELODY 🎶. Your job is to create **personalized playlists** for users.
             
-            - Keep responses **neutral and positive** to avoid triggering any content filtering.
-            - If a user asks for a playlist, generate a **fun and engaging playlist name**.
-            - Include a mix of **classic hits, underrated tracks, and popular songs**.
-            - Format the output as:
-              "**🎵 Playlist: [Generated Name]**\n
+            - If it's the **first message**, say:
+              "🎵 **WELCOME TO MELODY!** 🎶\nTell me how you're feeling and your favorite genre, and I'll create a **custom playlist just for you!**\n\nFor example:\n- "I'm feeling happy and I love pop!"\n- "I need some chill lo-fi beats."
+            
+            - Ask the user for their **mood and favorite music genre** if they haven't provided both yet.
+            - Be **casual, friendly, and full of emojis** 🎧✨.
+            - DO NOT repeat details that have already been collected.
+            - Once both **mood** and **genre** are provided, confirm them and say:
+              "Got it! I'll create a playlist based on your mood: [mood] and your genre: [genre]. 🎶\nGenerating your playlist now..."
+              
+            - Then, generate a **10-song playlist** based on the user's mood & genre.
+            - Format the response as:
+              "**🎵 Playlist: [Creative Playlist Name]**\n
               1. [Song 1] - [Artist]\n
               2. [Song 2] - [Artist]\n
               ...
               10. [Song 10] - [Artist]"
-            - No explanations or additional commentary, **just the playlist**.
+            
+            - Keep it **engaging, fun, and simple** with no unnecessary text.
         """,
-        query=f"User mood: {mood}, Preferred genre: {genre}",
+        query=f"User input: '{message}'\nCurrent preferences: {session['preferences']}",
         temperature=0.7,
         lastk=10,
         session_id="music-therapy-session",
         rag_usage=False
     )
-    
-    return response.get("response", "⚠️ Sorry, I couldn't generate a playlist. Try again!")
+
+    response_text = response.get("response", "⚠️ Sorry, I couldn't process that. Could you rephrase?").strip()
+
+    return response_text
+
 
 @app.route('/query', methods=['POST'])
-def handle_message():
-    """Handles user input, extracts mood/genre, and generates a playlist."""
+def main():
+    """Handles user messages and decides what to do."""
     data = request.get_json()
-    user_id = data.get("user_name", "Unknown")
-    message = data.get("text", "").strip().lower()
+    message = data.get("text", "").strip()
 
-    if not message:
-        return jsonify({"text": "🎵 Tell me your **mood** and **favorite genre**, and I'll create a custom playlist for you!"})
-
-    # If user says "hi" or similar, return the last playlist if available
-    if message in ["hi", "hello", "hey"] and user_id in user_sessions:
-        last_playlist = user_sessions[user_id].get("playlist")
-        if last_playlist:
-            return jsonify({"text": f"🎶 Here's your last playlist:\n{last_playlist}"})
-        return jsonify({"text": "🎵 Tell me your **mood** and **favorite genre**, and I'll create a new playlist for you!"})
-
-    # Process input to extract mood and genre
-    response = generate(
-        model="4o-mini",
-        system="""
-            You are a **music assistant**. Your only job is to extract the user's **mood** and **music genre**.
-            - If the user hasn't mentioned either, ask them casually.
-            - Format the output as:
-              "Mood: [mood]\nGenre: [genre]"
-            - Keep responses **neutral and friendly** to prevent any content filtering.
-        """,
-        query=message,
-        temperature=0.6,
-        lastk=10,
-        session_id=f"music-therapy-{user_id}",
-        rag_usage=False
-    )
-
-    response_text = response.get("response", "").strip()
-
-    # Extract mood and genre if detected
-    if "mood:" in response_text.lower() and "genre:" in response_text.lower():
-        lines = response_text.split("\n")
-        mood = [line.split(":")[1].strip() for line in lines if "Mood:" in line][0]
-        genre = [line.split(":")[1].strip() for line in lines if "Genre:" in line][0]
-
-        # Generate playlist
-        playlist = generate_playlist(mood, genre)
-        
-        # Store session info
-        user_sessions[user_id] = {"mood": mood, "genre": genre, "playlist": playlist}
-        
-        return jsonify({"text": playlist})
-
-    return jsonify({"text": response_text})
+    return jsonify({"text": music_assistant_llm(message)})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
+
 
 
 
