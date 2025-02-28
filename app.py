@@ -34,7 +34,7 @@ def generate_playlist(mood, genre):
     
     return response.get("response", "⚠️ Sorry, I couldn't generate a playlist. Try again!")
 
-@app.route('/query', methods=['POST'])
+@app.route('/', methods=['POST'])
 def handle_message():
     """Handles user input for mood and genre, then generates a playlist."""
     data = request.get_json()
