@@ -80,9 +80,11 @@ def create_spotify_playlist(playlist_name, track_uris):
 
     # **Truncate playlist name to 100 characters**
     if len(playlist_name) > 100:
-        playlist_name = playlist_name[:97] + "..."  # Ensures it's within 100 characters
+        playlist_name = playlist_name[:97] + "..."
 
     try:
+        print(f"[DEBUG] Creating Playlist: {playlist_name}")  # Debugging log
+
         playlist = sp.user_playlist_create(
             user=SPOTIFY_USER_ID,
             name=playlist_name,
@@ -93,10 +95,15 @@ def create_spotify_playlist(playlist_name, track_uris):
         if track_uris:
             sp.playlist_add_items(playlist_id=playlist["id"], items=track_uris)
 
-        print(f"[DEBUG] Playlist Created: {playlist['external_urls']['spotify']}")  # Debugging log
+        print(f"[DEBUG] Playlist Created Successfully: {playlist['external_urls']['spotify']}")  # Debugging log
         return playlist["external_urls"]["spotify"]
+
+    except spotipy.exceptions.SpotifyException as e:
+        print(f"[ERROR] Spotify API Error: {e.http_status} - {e.msg}")  # Detailed Spotify error
+        return None
+
     except Exception as e:
-        print(f"[ERROR] Spotify playlist creation failed: {e}")
+        print(f"[ERROR] Unexpected Error During Playlist Creation: {e}")
         return None
 
 
@@ -185,9 +192,6 @@ def main():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
-
-
-
 
 
 
