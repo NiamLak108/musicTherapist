@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from llmproxy import generate
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
+from spotipy.oauth2 import SpotifyOAuth
 
 app = Flask(__name__)
 
@@ -27,45 +27,6 @@ session = {
     "state": "conversation",
     "preferences": {"mood": None, "genre": None}
 }
-
-def generate_playlist(mood, genre):
-    """Uses LLM to generate a playlist of 10 songs based on mood & genre."""
-    response = generate(
-        model="4o-mini",
-        system="""
-            You are a **music therapy assistant** named MELODY 🎶. Your job is to create **personalized playlists** for users.
-            
-            - If it's the **first message**, say:
-              "🎵 **WELCOME TO MELODY!** 🎶\nTell me how you're feeling and your favorite genre, and I'll create a **custom playlist just for you!**\n\nFor example:\n- "I'm feeling happy and I love pop!"\n- "I need some chill lo-fi beats."
-            
-            - Ask the user for their **mood and favorite music genre** if they haven't provided both yet.
-            - Be **casual, friendly, and full of emojis** 🎧✨.
-            - DO NOT repeat details that have already been collected.
-            - Once both **mood** and **genre** are provided, confirm them and say:
-              "Got it! I'll create a playlist based on your mood: [mood] and your genre: [genre]. 🎶\nGenerating your playlist now..."
-              
-            - Then, generate a **10-song playlist** based on the user's mood & genre.
-            - Format the response as:
-              "**🎵 Playlist: [Creative Playlist Name]**\n
-              1. [Song 1] - [Artist]\n
-              2. [Song 2] - [Artist]\n
-              ...
-              10. [Song 10] - [Artist]"
-        """,
-        query=f"User input: '{mood}, {genre}'",
-        temperature=0.7,
-        lastk=10,
-        session_id="music-therapy-session",
-        rag_usage=False
-    )
-
-    playlist_text = response.get("response", "").strip()
-    
-    if not playlist_text:
-        return None, "⚠️ Sorry, I couldn't generate a playlist. Try again!"
-    
-    return playlist_text, extract_songs(playlist_text)
-
 
 def extract_songs(playlist_text):
     """Extracts song titles and artists from the LLM-generated playlist."""
@@ -116,8 +77,41 @@ def create_spotify_playlist(user_id, playlist_name, track_uris):
         return None
 
 
+def generate_playlist(mood, genre):
+    """Uses LLM to generate a playlist of 10 songs based on mood & genre."""
+    response = generate(
+        model="4o-mini",
+        system="""
+            You are a **music therapy assistant** named MELODY 🎶. Your job is to create **personalized playlists** for users.
+            
+            - Once both **mood** and **genre** are provided, confirm them and say:
+              "Got it! I'll create a playlist based on your mood: [mood] and your genre: [genre]. 🎶\nGenerating your playlist now..."
+              
+            - Then, generate a **10-song playlist** based on the user's mood & genre.
+            - Format the response as:
+              "**🎵 Playlist: [Creative Playlist Name]**\n
+              1. [Song 1] - [Artist]\n
+              2. [Song 2] - [Artist]\n
+              ...
+              10. [Song 10] - [Artist]"
+        """,
+        query=f"User input: '{mood}, {genre}'",
+        temperature=0.7,
+        lastk=10,
+        session_id="music-therapy-session",
+        rag_usage=False
+    )
+
+    playlist_text = response.get("response", "").strip()
+    
+    if not playlist_text:
+        return None, "⚠️ Sorry, I couldn't generate a playlist. Try again!"
+    
+    return playlist_text, extract_songs(playlist_text)
+
+
 def music_assistant_llm(message):
-    """Handles the full conversation and generates a playlist + Spotify link."""
+    """Handles the conversation and generates a playlist + Spotify link."""
     response = generate(
         model="4o-mini",
         system="""
@@ -175,6 +169,7 @@ def main():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
+
 
 
 
