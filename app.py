@@ -1,102 +1,78 @@
 import os
-import requests
 from flask import Flask, request, jsonify
-from llmproxy import generate
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 from dotenv import load_dotenv
+from llmproxy import generate
 
 app = Flask(__name__)
 
-# === 🛠 Load API Keys & Environment Variables ===
+# Load environment variables
 load_dotenv()
-SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
-SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
-SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8888/callback")
 
-# === 🎵 Spotify Functions ===
-def search_song(mood, limit=30):
-    """Search for songs based on user mood"""
-    try:
-        sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-            client_id=SPOTIFY_CLIENT_ID,
-            client_secret=SPOTIFY_CLIENT_SECRET
-        ))
-
-        results = sp.search(q=f"{mood} music", limit=limit, type='track')
-        track_uris = [track['uri'] for track in results.get('tracks', {}).get('items', [])]
-
-        return track_uris if track_uris else None
-    except Exception as e:
-        print(f"[ERROR] search_song failed: {e}")
-        return None
-
-def create_playlist(user_id, playlist_name, description, track_uris):
-    """Create a Spotify playlist and add songs"""
-    try:
-        sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-            client_id=SPOTIFY_CLIENT_ID,
-            client_secret=SPOTIFY_CLIENT_SECRET,
-            redirect_uri=SPOTIFY_REDIRECT_URI,
-            scope='playlist-modify-public'
-        ))
-
-        current_user_id = sp.current_user()['id']
-        playlist = sp.user_playlist_create(user=current_user_id, name=playlist_name, public=True, description=description)
-        sp.playlist_add_items(playlist_id=playlist['id'], items=track_uris)
-
-        return playlist['external_urls']['spotify']
-    except Exception as e:
-        print(f"[ERROR] create_playlist failed: {e}")
-        return None
-
-# === 🚀 Flask Endpoints ===
-@app.route('/', methods=['POST'])
-def handle_message():
-    """Handles messages from Rocket.Chat, asks for mood, and generates a playlist"""
-    data = request.get_json()
-    user_id = data.get("user_name", "Unknown")
-    message = data.get("text", "").strip().lower()
-
-    print(f"[DEBUG] Received from {user_id}: {message}")
-
-    if data.get("bot") or not message:
-        return jsonify({"status": "ignored"})
-
-    # 🚀 If user is saying "hello" or something general, introduce the bot
-    if "hello" in message or "hi" in message or "what can you do" in message:
-        return jsonify({"text": "🎵 **Welcome! I'm a Music Therapy Bot.**\n\nTell me how you're feeling, and I'll create a **Spotify playlist** just for you! 🧘‍♂️🎶\n\nFor example, say:\n- 'I'm feeling stressed'\n- 'I need focus music'\n- 'Make me a happy playlist' 🎧"})
-
-    # 🎵 Call LLM to determine the playlist theme
+def generate_playlist(mood, genre):
+    """Uses LLM to generate a playlist based on mood and genre."""
     response = generate(
         model="4o-mini",
-        system="You are a music assistant. Generate a playlist theme based on the user's mood or request.",
-        query=message,
-        temperature=0.5,
+        system="""
+            You are a music recommendation assistant. Your job is to create a **10-song playlist** 
+            based on the user's **mood and preferred genre**.
+            - Generate fun and unique playlist names 🎵.
+            - Include a mix of popular, underrated, and timeless songs.
+            - Format output as:
+              "**Playlist Name:** [Generated Name] 🎶\n
+              1. [Song 1] - [Artist]\n
+              2. [Song 2] - [Artist]\n
+              ...
+              10. [Song 10] - [Artist]"
+            - Keep it **engaging, fun, and personalized**.
+        """,
+        query=f"User mood: {mood}, Preferred genre: {genre}",
+        temperature=0.7,
         lastk=10,
-        session_id=f"music-therapy-{user_id}",
+        session_id="music-therapy-session",
+        rag_usage=False
+    )
+    
+    return response.get("response", "⚠️ Sorry, I couldn't generate a playlist. Try again!")
+
+@app.route('/query', methods=['POST'])
+def handle_message():
+    """Handles user input for mood and genre, then generates a playlist."""
+    data = request.get_json()
+    message = data.get("text", "").strip()
+
+    if not message:
+        return jsonify({"text": "⚠️ Please tell me how you're feeling and your favorite music genre!"})
+
+    # Ask for mood and genre
+    response = generate(
+        model="4o-mini",
+        system="""
+            You are a friendly chatbot that helps users pick a **music playlist**.
+            - If the user hasn't mentioned **mood** or **genre**, ask for them in a casual and fun way.
+            - Keep the conversation **light and engaging** 🎵.
+            - Once both are provided, confirm them and say: "Awesome! Let me create your playlist..."
+        """,
+        query=message,
+        temperature=0.6,
+        lastk=10,
+        session_id="music-therapy-session",
         rag_usage=False
     )
 
-    playlist_theme = response.get("response", "").strip()
-    if not playlist_theme:
-        return jsonify({"text": "⚠️ I couldn't determine a playlist theme. Try again!"})
+    response_text = response.get("response", "").strip()
 
-    # 🎶 Fetch songs
-    track_uris = search_song(playlist_theme)
-    if not track_uris:
-        return jsonify({"text": "⚠️ No songs found for that theme. Try another mood!"})
+    # Extract mood and genre if detected
+    if "mood:" in response_text.lower() and "genre:" in response_text.lower():
+        mood, genre = response_text.split("mood:")[1].split("genre:")
+        mood, genre = mood.strip(), genre.strip()
+        playlist = generate_playlist(mood, genre)
+        return jsonify({"text": playlist})
+    
+    return jsonify({"text": response_text})
 
-    # 🎼 Create playlist
-    playlist_url = create_playlist(user_id, f"{playlist_theme} Playlist", "A playlist based on your mood.", track_uris)
-    if not playlist_url:
-        return jsonify({"text": "⚠️ Failed to create playlist. Please try again later."})
-
-    return jsonify({"text": f"🎵 Here's your **{playlist_theme} Playlist**: {playlist_url}"})
-
-# === 🚀 Run Flask App ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
+
 
 
 
