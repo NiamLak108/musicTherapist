@@ -18,7 +18,7 @@ REFRESH_TOKEN = "AQCtcTcd2HdE1SXfXHlzXkiMPme6kiSkywiTka1aDFK-W9MSsCCzc08-IBE2me6
 # **Explicitly setting the Spotify user ID to "helloniam"**
 SPOTIFY_USER_ID = "helloniam"
 
-# === 🎵 Spotify Authentication (Using Pre-Generated Tokens) ===
+# === 🎵 Spotify Authentication ===
 sp = spotipy.Spotify(auth=ACCESS_TOKEN)
 
 
@@ -32,6 +32,7 @@ def refresh_spotify_token():
             scope="playlist-modify-public"
         )
         new_token_info = auth_manager.refresh_access_token(REFRESH_TOKEN)
+        print("[DEBUG] Refreshed Spotify token.")
         return new_token_info["access_token"]
     except Exception as e:
         print(f"[ERROR] Failed to refresh Spotify token: {e}")
@@ -49,6 +50,7 @@ def extract_songs(playlist_text):
                 song_title = parts[0].split(". ")[1].strip()
                 artist = parts[1].strip()
                 songs.append((song_title, artist))
+    print(f"[DEBUG] Extracted Songs: {songs}")  # Debugging log
     return songs
 
 
@@ -66,6 +68,8 @@ def search_songs(songs):
                 track_uris.append(tracks[0]["uri"])
         except Exception as e:
             print(f"[ERROR] Failed to search for {song} by {artist}: {e}")
+    
+    print(f"[DEBUG] Found Track URIs: {track_uris}")  # Debugging log
     return track_uris
 
 
@@ -85,6 +89,7 @@ def create_spotify_playlist(playlist_name, track_uris):
         if track_uris:
             sp.playlist_add_items(playlist_id=playlist["id"], items=track_uris)
 
+        print(f"[DEBUG] Playlist Created: {playlist['external_urls']['spotify']}")  # Debugging log
         return playlist["external_urls"]["spotify"]
     except Exception as e:
         print(f"[ERROR] Spotify playlist creation failed: {e}")
@@ -92,12 +97,11 @@ def create_spotify_playlist(playlist_name, track_uris):
 
 
 def generate_playlist(mood, genre):
-    """Uses LLM to generate a playlist while avoiding content filtering issues."""
+    """Uses LLM to generate a playlist."""
     response = generate(
         model="4o-mini",
         system="""
             You are a **music therapy assistant** named MELODY 🎶. Your job is to create **safe, fun, and engaging playlists** for users.
-            - **Do NOT use words that might trigger content filtering.** Keep responses neutral and positive.
             - Generate a **10-song playlist** based on the user's mood & genre.
             - Format the response as:
               "**🎵 Playlist: [Creative Playlist Name]**\n
@@ -115,6 +119,8 @@ def generate_playlist(mood, genre):
 
     playlist_text = response.get("response", "").strip()
     
+    print(f"[DEBUG] LLM Playlist Response:\n{playlist_text}")  # Debugging log
+
     if not playlist_text:
         return None, "⚠️ Sorry, I couldn't generate a playlist. Try again!"
     
@@ -122,15 +128,13 @@ def generate_playlist(mood, genre):
 
 
 def music_assistant_llm(message):
-    """Handles user input while ensuring content filtering is bypassed."""
+    """Handles user input and generates a playlist."""
     response = generate(
         model="4o-mini",
         system="""
             You are a **music therapy assistant** named MELODY 🎶. 
-            - **Ensure your response is always safe and neutral** so it doesn't trigger content filtering.
             - If the user hasn't provided both **mood** and **genre**, ask for them.
             - Once both are provided, confirm and generate a playlist.
-            - **Avoid using flagged words or phrases.** Keep language clean, engaging, and positive.
             - Format the response as:  
               "Mood: [mood]\nGenre: [genre]"
         """,
@@ -142,9 +146,7 @@ def music_assistant_llm(message):
     )
 
     response_text = response.get("response", "").strip()
-
-    if "blocked by content filtering" in response_text.lower():
-        return "🎵 **Oops! Something went wrong.** Let's try again! Please share your mood and favorite genre, and I'll make a playlist for you. 😊"
+    print(f"[DEBUG] LLM Mood & Genre Response: {response_text}")  # Debugging log
 
     mood, genre = None, None
     if "mood:" in response_text.lower() and "genre:" in response_text.lower():
@@ -166,15 +168,11 @@ def music_assistant_llm(message):
     track_uris = search_songs(songs)
     spotify_url = create_spotify_playlist(f"{mood} {genre} Playlist", track_uris)
 
-    if spotify_url:
-        return f"{playlist_text}\n\n🎶 **Listen on Spotify:** {spotify_url}"
-    else:
-        return f"{playlist_text}\n\n⚠️ Couldn't create a Spotify playlist, but here are the songs!"
+    return f"{playlist_text}\n\n🎶 **Listen on Spotify:** {spotify_url}" if spotify_url else f"{playlist_text}\n\n⚠️ Couldn't create a Spotify playlist, but here are the songs!"
 
 
 @app.route('/', methods=['POST'])
 def main():
-    """Handles user messages and sends them to Rocket.Chat without content filtering issues."""
     data = request.get_json()
     message = data.get("text", "").strip()
 
@@ -183,6 +181,7 @@ def main():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
+
 
 
 
