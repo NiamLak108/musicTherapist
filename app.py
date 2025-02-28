@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from llmproxy import generate
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth
+from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 
 app = Flask(__name__)
 
@@ -17,19 +17,11 @@ SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8888/
 # **Explicitly setting the Spotify user ID to "helloniam"**
 SPOTIFY_USER_ID = "helloniam"
 
-# === 🎵 Spotify Authentication ===
-def get_spotify_client():
-    """Ensures the Spotify client is authenticated properly."""
-    try:
-        return spotipy.Spotify(auth_manager=SpotifyOAuth(
-            client_id=SPOTIFY_CLIENT_ID,
-            client_secret=SPOTIFY_CLIENT_SECRET,
-            redirect_uri=SPOTIFY_REDIRECT_URI,
-            scope="playlist-modify-public"
-        ))
-    except Exception as e:
-        print(f"[ERROR] Failed to authenticate with Spotify: {e}")
-        return None  # Handle missing authentication gracefully
+# === 🎵 Spotify Authentication (Now Using Client Credentials) ===
+sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+    client_id=SPOTIFY_CLIENT_ID,
+    client_secret=SPOTIFY_CLIENT_SECRET
+))
 
 
 # === 💬 Chatbot Session Data ===
@@ -54,28 +46,31 @@ def extract_songs(playlist_text):
 
 
 def search_songs(songs):
-    """Searches Spotify for song URIs."""
-    sp = get_spotify_client()
-    if not sp:
-        return []  # Return empty list if Spotify authentication fails
-
+    """Searches Spotify for song URIs using Client Credentials."""
     track_uris = []
     for song, artist in songs:
-        results = sp.search(q=f"track:{song} artist:{artist}", limit=1, type="track")
-        tracks = results.get("tracks", {}).get("items", [])
-        if tracks:
-            track_uris.append(tracks[0]["uri"])
+        try:
+            results = sp.search(q=f"track:{song} artist:{artist}", limit=1, type="track")
+            tracks = results.get("tracks", {}).get("items", [])
+            if tracks:
+                track_uris.append(tracks[0]["uri"])
+        except Exception as e:
+            print(f"[ERROR] Failed to search for {song} by {artist}: {e}")
     return track_uris
 
 
 def create_spotify_playlist(playlist_name, track_uris):
     """Creates a Spotify playlist for 'helloniam' and adds songs."""
-    sp = get_spotify_client()
-    if not sp:
-        return None  # Return None if Spotify authentication fails
-
     try:
-        playlist = sp.user_playlist_create(
+        auth_manager = SpotifyOAuth(
+            client_id=SPOTIFY_CLIENT_ID,
+            client_secret=SPOTIFY_CLIENT_SECRET,
+            redirect_uri=SPOTIFY_REDIRECT_URI,
+            scope="playlist-modify-public"
+        )
+        sp_auth = spotipy.Spotify(auth_manager=auth_manager)
+        
+        playlist = sp_auth.user_playlist_create(
             user=SPOTIFY_USER_ID,  # **Explicitly using "helloniam"**
             name=playlist_name,
             public=True,
@@ -83,7 +78,7 @@ def create_spotify_playlist(playlist_name, track_uris):
         )
 
         if track_uris:
-            sp.playlist_add_items(playlist_id=playlist["id"], items=track_uris)
+            sp_auth.playlist_add_items(playlist_id=playlist["id"], items=track_uris)
 
         return playlist["external_urls"]["spotify"]
     except Exception as e:
@@ -143,11 +138,9 @@ def music_assistant_llm(message):
 
     response_text = response.get("response", "").strip()
 
-    # **Bypass content filtering by modifying response if flagged**
     if "blocked by content filtering" in response_text.lower():
         return "🎵 **Oops! Something went wrong.** Let's try again! Please share your mood and favorite genre, and I'll make a playlist for you. 😊"
 
-    # Extract mood and genre
     mood, genre = None, None
     if "mood:" in response_text.lower() and "genre:" in response_text.lower():
         try:
@@ -162,12 +155,10 @@ def music_assistant_llm(message):
     session["preferences"]["mood"] = mood
     session["preferences"]["genre"] = genre
 
-    # Generate Playlist
     playlist_text, songs = generate_playlist(mood, genre)
     if not playlist_text:
         return "⚠️ Couldn't generate a playlist. Try again!"
 
-    # Search and create Spotify playlist
     track_uris = search_songs(songs)
     spotify_url = create_spotify_playlist(f"{mood} {genre} Playlist", track_uris)
 
@@ -188,6 +179,7 @@ def main():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
+
 
 
 
