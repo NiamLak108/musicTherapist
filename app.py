@@ -78,6 +78,10 @@ def create_spotify_playlist(playlist_name, track_uris):
     global sp
     sp = spotipy.Spotify(auth=refresh_spotify_token())
 
+    # **Truncate playlist name to 100 characters**
+    if len(playlist_name) > 100:
+        playlist_name = playlist_name[:97] + "..."  # Ensures it's within 100 characters
+
     try:
         playlist = sp.user_playlist_create(
             user=SPOTIFY_USER_ID,
