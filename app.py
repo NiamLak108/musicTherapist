@@ -12,8 +12,8 @@ SPOTIFY_CLIENT_SECRET = '616aa8ebca9d40c6a4a1479a623c0558'
 SPOTIFY_REDIRECT_URI = 'http://localhost:8888/callback'
 
 # **Pre-generated tokens (Replace these with actual values)**
-ACCESS_TOKEN = "BQCmVHfXFOr1FpIsD0Rf4PWupKwkf_-fA50OTDnyFI5N0ree-kX1Z3MHJ38_uWrSNsXlEtNAxR6ZJqdOwAkeze0-K2u3mBlVVKKvi3fWRgdkRFuNCe6tsoomnoFEfda5F7yjfLFsQWlAX7vcOv_IK557a9ld0-MNJSAUCZA-rf--2_34F3iXioWtDZUTxE_NWaIfJ7dheTGm4swvK0jtfTmRn4dYBPpnIgn1Di9tY5PA"
-REFRESH_TOKEN = "AQCtcTcd2HdE1SXfXHlzXkiMPme6kiSkywiTka1aDFK-W9MSsCCzc08-IBE2me6zfcFlovwfgDBhLu1g5nkziyTCn1U65PwhhNUDPKj7Bys5JOBGGlhIWX6ZVAWuVaSPGco"
+ACCESS_TOKEN = "SECRET"
+REFRESH_TOKEN = "SECRET"
 
 # **Explicitly setting the Spotify user ID to "helloniam"**
 SPOTIFY_USER_ID = "helloniam"
